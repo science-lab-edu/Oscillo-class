@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta name="robots" content="noindex, nofollow">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>かんたんWebオシロスコープ v2（発振器つき）</title>
+<!-- セキュリティ: このファイル自身以外の読み込みを禁止 -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline';">
+<style>
+  :root { --bg:#0b0f14; --panel:#131a22; --text:#eaf2ff; --muted:#9db1cc; --accent:#4cc9f0; --ok:#6ee7a2; --warn:#ffcf6e; }
+  * { box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", sans-serif; }
+  body { margin:0; background:var(--bg); color:var(--text); display:flex; flex-direction:column; min-height:100vh; }
+  header { padding:12px 16px; background:var(--panel); border-bottom:1px solid #1c2633; display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  header h1 { font-size:18px; margin:0 12px 0 0; white-space:nowrap; }
+  .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  button, select, input[type="range"], input[type="number"] { font-size:16px; }
+  button { padding:10px 14px; border-radius:8px; border:none; cursor:pointer; background:#233142; color:var(--text); }
+  button.primary { background:var(--accent); color:#001018; font-weight:700; }
+  button.good { background:var(--ok); color:#00220c; font-weight:700; }
+  button.warn { background:var(--warn); color:#2a1800; font-weight:700; }
+  button:disabled { opacity:.6; cursor:not-allowed; }
+  .label { font-size:13px; color:var(--muted); margin-right:6px; }
+  .stack { display:flex; align-items:center; gap:8px; padding:4px 8px; background:#0e141c; border-radius:8px; }
+  main { flex:1; display:grid; grid-template-rows: 1fr auto; gap:8px; padding:10px; }
+  #scopeWrap { position:relative; border:1px solid #1c2633; border-radius:10px; background:#0a1017; height: 340px; }
+  canvas { width:100%; height:100%; display:block; }
+  #overlay { position:absolute; inset:0; pointer-events:none; }
+  .statusbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:8px 10px; background:var(--panel); border-top:1px solid #1c2633; }
+  .meter { width:140px; height:10px; background:#142130; border-radius:6px; overflow:hidden; position:relative; }
+  .meter > div { height:100%; width:0%; background:var(--ok); transition:width .05s linear; }
+  .help { margin-left:auto; font-size:14px; color:var(--muted); }
+  a { color: var(--accent); }
+  /* 発振器パネル */
+  .gen { padding:10px 16px; background:#0e141c; border-top:1px solid #1c2633; display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+  .gen h2 { font-size:16px; margin:0 8px 0 0; }
+  .gen .group { display:flex; align-items:center; gap:8px; background:#0b121a; padding:6px 8px; border-radius:8px; }
+  .split { height:1px; width:100%; background:#152334; margin:8px 0; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>かんたんWebオシロスコープ v2</h1>
+    <div class="controls">
+      <button id="startBtn" class="primary">▶ マイク開始</button>
+      <button id="stopBtn" class="warn" disabled>■ 停止</button>
+      <button id="freezeBtn">⏸ 一時停止</button>
+      <button id="shotBtn">📸 画像保存</button>
+      <div class="stack" aria-label="感度">
+        <span class="label">感度（大きさ）</span>
+        <input id="gain" type="range" min="0.2" max="8" value="1.5" step="0.1" />
+      </div>
+      <div class="stack" aria-label="時間軸">
+        <span class="label">時間軸</span>
+        <select id="timebase">
+          <option value="0.5">0.5 ms/div</option>
+          <option value="1">1 ms/div</option>
+          <option value="2" selected>2 ms/div</option>
+          <option value="5">5 ms/div</option>
+          <option value="10">10 ms/div</option>
+          <option value="20">20 ms/div</option>
+          <option value="50">50 ms/div</option>
+        </select>
+      </div>
+      <div class="stack" aria-label="トリガ">
+        <span class="label">トリガ</span>
+        <select id="triggerMode" title="波形を安定表示（ゼロクロス検出）">
+          <option value="free" selected>フリー</option>
+          <option value="rise">立上り</option>
+          <option value="fall">立下り</option>
+        </select>
+        <span class="label">しきい値</span>
+        <input id="triggerLevel" type="range" min="-1" max="1" value="0" step="0.02" />
+      </div>
+    </div>
+  </header>
+
+  <!-- 発振器（トーンジェネレータ） -->
+  <section class="gen" aria-label="周波数発信システム">
+    <h2>🔊 発振器（指定周波数の音を出す）</h2>
+    <div class="group">
+      <span class="label">周波数</span>
+      <input id="freqNum" type="number" min="20" max="4000" step="1" value="440" style="width:96px;" />
+      <input id="freqRange" type="range" min="20" max="4000" step="1" value="440" style="width:220px;" />
+      <span class="label">Hz</span>
+    </div>
+    <div class="group">
+      <span class="label">波形</span>
+      <select id="wave">
+        <option value="sine" selected>正弦波</option>
+        <option value="square">矩形波</option>
+        <option value="sawtooth">のこぎり波</option>
+        <option value="triangle">三角波</option>
+      </select>
+    </div>
+    <div class="group">
+      <span class="label">音量</span>
+      <input id="vol" type="range" min="0" max="1" step="0.01" value="0.1" />
+      <button id="muteBtn">🔇 ミュート</button>
+    </div>
+    <div class="group">
+      <button id="toneStart" class="good">▶ 発振開始</button>
+      <button id="toneStop" class="warn" disabled>■ 発振停止</button>
+    </div>
+    <div class="help">安全のため、音量は小さめ(0.1)からゆっくり上げてください。ヘッドホン使用時は特に注意。</div>
+  </section>
+
+  <main>
+    <div id="scopeWrap" aria-label="オシロ画面">
+      <canvas id="scope" width="1200" height="500"></canvas>
+      <canvas id="overlay" width="1200" height="500" aria-hidden="true"></canvas>
+    </div>
+    <div class="statusbar">
+      <div><strong>サンプリング周波数:</strong> <span id="sr">-</span> Hz</div>
+      <div><strong>音量:</strong> <span id="db">-</span> dBFS</div>
+      <div class="meter" aria-label="音量メーター"><div id="meterFill"></div></div>
+      <div><strong>主周波数:</strong> <span id="freq">-</span> Hz</div>
+      <div class="help">使い方: マイク▶で波形を見る / 発振器▶で指定周波数を再生。トリガ=立上りにすると正弦波が安定します。</div>
+    </div>
+  </main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const startBtn = $('startBtn'), stopBtn = $('stopBtn'), freezeBtn = $('freezeBtn'), shotBtn = $('shotBtn');
+  const gainEl = $('gain'), timebaseEl = $('timebase'), trigModeEl = $('triggerMode'), trigLvlEl = $('triggerLevel');
+  const srEl = $('sr'), dbEl = $('db'), meterFill = $('meterFill');
+  const canvas = $('scope'), ctx = canvas.getContext('2d');
+  const ov = $('overlay'), octx = ov.getContext('2d');
+  const freqEl = $('freq');
+
+  // 発振器UI
+  const freqNum = $('freqNum'), freqRange = $('freqRange');
+  const waveSel = $('wave'), volEl = $('vol');
+  const muteBtn = $('muteBtn'), toneStart = $('toneStart'), toneStop = $('toneStop');
+
+  let audioCtx, analyser, srcNode, micStream;
+  let running = false, frozen = false;
+  let gain = parseFloat(gainEl.value);
+  let triggerMode = trigModeEl.value; // 'free' | 'rise' | 'fall'
+  let triggerLevel = parseFloat(trigLvlEl.value);
+  let fftSize = 4096; // 大きめのバッファでなめらかに
+  let sampleRate = 48000;
+
+  // 発振器
+  let osc = null, outGain = null, isMuted = false, targetVol = parseFloat(volEl.value);
+
+  function drawGrid() {
+    const w = canvas.width, h = canvas.height;
+    octx.clearRect(0,0,w,h);
+    // 背景グリッド
+    octx.strokeStyle = '#122033';
+    octx.lineWidth = 1;
+    const divs = 10;
+    for (let i = 0; i <= divs; i++) {
+      const x = Math.round(i * w / divs) + 0.5;
+      const y = Math.round(i * h / divs) + 0.5;
+      octx.beginPath(); octx.moveTo(x, 0); octx.lineTo(x, h); octx.stroke();
+      octx.beginPath(); octx.moveTo(0, y); octx.lineTo(w, y); octx.stroke();
+    }
+    // 中心線
+    octx.strokeStyle = '#1e3a5c';
+    octx.lineWidth = 1.5;
+    octx.beginPath(); octx.moveTo(0, h/2+0.5); octx.lineTo(w, h/2+0.5); octx.stroke();
+
+    // 目盛テキスト
+    octx.fillStyle = '#89a5c6';
+    octx.font = '12px system-ui, sans-serif';
+    const msPerDiv = parseFloat(timebaseEl.value);
+    octx.fillText(`${msPerDiv} ms/div`, 8, 16);
+    octx.fillText(`感度×${gain.toFixed(1)}`, 8, 32);
+    octx.fillText(`トリガ: ${triggerMode}${triggerMode==='free'?'':' @ '+triggerLevel.toFixed(2)}`, 8, 48);
+  }
+
+  function rmsDbFS(buf) {
+    let sum=0;
+    for (let i=0;i<buf.length;i++) sum += buf[i]*buf[i];
+    const rms = Math.sqrt(sum / buf.length) || 1e-12;
+    return 20*Math.log10(rms);
+  }
+
+  function findTriggerIndex(samples, level, mode) {
+    for (let i = 1; i < samples.length; i++) {
+      const prev = samples[i-1], cur = samples[i];
+      if (mode === 'rise' && prev < level && cur >= level) return i;
+      if (mode === 'fall' && prev > level && cur <= level) return i;
+    }
+    return -1;
+  }
+
+  function updateUIState() {
+    startBtn.disabled = running;
+    stopBtn.disabled = !running;
+    freezeBtn.textContent = frozen ? '▶ 再開' : '⏸ 一時停止';
+    toneStart.disabled = !!osc; // 再生中は開始を無効
+    toneStop.disabled = !osc;
+    muteBtn.textContent = isMuted ? '🔈 ミュート解除' : '🔇 ミュート';
+  }
+
+  function drawLoop() {
+    if (!running) return;
+    if (frozen) { requestAnimationFrame(drawLoop); return; }
+
+    const w = canvas.width, h = canvas.height;
+    const buf = new Float32Array(analyser.fftSize);
+    analyser.getFloatTimeDomainData(buf);
+
+    // 音量表示
+    const db = rmsDbFS(buf);
+    dbEl.textContent = db.toFixed(1);
+    const norm = Math.min(1, Math.max(0, (db + 60) / 50)); // -60dB〜-10dBを0〜1に
+    meterFill.style.width = (norm*100).toFixed(0) + '%';
+
+    ctx.clearRect(0,0,w,h);
+
+    // 時間軸計算
+    const msPerDiv = parseFloat(timebaseEl.value);
+    const totalMs = msPerDiv * 10; // 10 division 幅
+    const samplesNeeded = Math.max(512, Math.min(buf.length, Math.floor(sampleRate * (totalMs/1000))));
+    let startIndex = buf.length - samplesNeeded;
+
+    // トリガ処理（任意）
+    if (triggerMode !== 'free') {
+      const search = buf.subarray(buf.length - samplesNeeded - 2048);
+      const idx = findTriggerIndex(search, triggerLevel, triggerMode);
+      if (idx !== -1) {
+        const offset = Math.max(0, (search.length - samplesNeeded) + idx);
+        startIndex = Math.max(0, buf.length - search.length + offset);
+      }
+    }
+
+    // 波形描画
+    ctx.strokeStyle = '#4cc9f0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const step = samplesNeeded / w; // 1pxあたりのサンプル数
+    for (let i = 0; i < w; i++) {
+      const di = Math.floor(startIndex + i*step);
+      const v = (buf[di] || 0) * gain;
+      const y = h/2 - v * (h*0.4);
+      if (i===0) ctx.moveTo(0, y); else ctx.lineTo(i, y);
+    }
+    ctx.stroke();
+
+    // ===== 周波数解析（主ピーク） =====
+    const freqBins = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(freqBins);
+    let maxI = 0, maxV = -1;
+    for (let i = 1; i < freqBins.length-1; i++) {
+      if (freqBins[i] > maxV) { maxV = freqBins[i]; maxI = i; }
+    }
+    const y0 = freqBins[maxI-1] || 0, y1 = freqBins[maxI] || 0, y2 = freqBins[maxI+1] || 0;
+    const denom = (y0 - 2*y1 + y2) || 1;
+    const delta = (y0 - y2) / (2*denom);
+    const preciseIndex = maxI + delta;
+    const binHz = sampleRate / analyser.fftSize;
+    const freq = Math.max(0, preciseIndex * binHz);
+    freqEl.textContent = freq.toFixed(1);
+
+    requestAnimationFrame(drawLoop);
+  }
+
+  async function start() {
+    if (running) return;
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, latency: 0 },
+        video:false
+      });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      sampleRate = audioCtx.sampleRate;
+      srEl.textContent = sampleRate.toFixed(0);
+
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = fftSize;
+      analyser.smoothingTimeConstant = 0.02;
+
+      srcNode = audioCtx.createMediaStreamSource(micStream);
+      srcNode.connect(analyser);
+
+      // 発振器の出力も可視化に混ぜたい場合は、下の1行をコメント解除
+      // outGain && outGain.connect(analyser);
+
+      running = true; frozen = false;
+      updateUIState(); drawGrid(); drawLoop();
+    } catch(err) {
+      alert('マイクにアクセスできませんでした。\n・HTTPSで開いていますか？\n・ブラウザの許可をONにしましたか？\n\n詳細: ' + err.message);
+      console.error(err);
+    }
+  }
+
+  function stop() {
+    running = false;
+    if (srcNode) { try { srcNode.disconnect(); } catch{} }
+    if (micStream) micStream.getTracks().forEach(t => t.stop());
+    if (audioCtx) audioCtx.close();
+    updateUIState();
+  }
+
+  function freeze() {
+    if (!running) return;
+    frozen = !frozen;
+    updateUIState();
+  }
+
+  function savePng() {
+    const w = canvas.width, h = canvas.height;
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    const tctx = tmp.getContext('2d');
+    tctx.drawImage(ov,0,0);
+    tctx.drawImage(canvas,0,0);
+    const a = document.createElement('a');
+    a.download = 'waveform.png';
+    a.href = tmp.toDataURL('image/png');
+    a.click();
+  }
+
+  // 高DPI対応とリサイズ
+  function fitCanvas() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    const rect = $('scopeWrap').getBoundingClientRect();
+    [canvas, ov].forEach(c => {
+      c.width  = Math.floor(rect.width * dpr);
+      c.height = Math.floor(Math.max(260, rect.height) * dpr);
+      c.style.width = rect.width + 'px';
+      c.style.height = Math.max(260, rect.height) + 'px';
+      c.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+    });
+    drawGrid();
+  }
+
+  // ===== 発振器ロジック =====
+  function ensureCtx() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      sampleRate = audioCtx.sampleRate;
+      srEl.textContent = sampleRate.toFixed(0);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = fftSize;
+      analyser.smoothingTimeConstant = 0.02;
+      // デフォルトでは可視化はマイク由来。発振器だけ使う場合は analyser を使わないこともOK
+    }
+  }
+
+  function startTone() {
+    ensureCtx();
+    if (osc) return;
+    osc = audioCtx.createOscillator();
+    outGain = audioCtx.createGain();
+
+    // 値の反映
+    const f = clampFreq(parseFloat(freqNum.value));
+    osc.frequency.value = f;
+    osc.type = waveSel.value;
+
+    // ソフトスタート（安全のため）
+    const now = audioCtx.currentTime;
+    outGain.gain.cancelScheduledValues(now);
+    outGain.gain.setValueAtTime(0.0001, now);
+    outGain.gain.exponentialRampToValueAtTime(isMuted ? 0.0001 : Math.max(0.0001, targetVol), now + 0.05);
+
+    osc.connect(outGain).connect(audioCtx.destination);
+
+    // 観測に混ぜたい場合は analyser にも接続（ループバックせずに視覚化）
+    // outGain.connect(analyser);
+
+    osc.start();
+    updateUIState();
+  }
+
+  function stopTone() {
+    if (!osc) return;
+    const now = audioCtx.currentTime;
+    outGain.gain.cancelScheduledValues(now);
+    outGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.03);
+    setTimeout(() => {
+      try { osc.stop(); } catch {}
+      try { osc.disconnect(); outGain.disconnect(); } catch {}
+      osc = null; outGain = null;
+      updateUIState();
+    }, 60);
+  }
+
+  function clampFreq(v) {
+    if (!isFinite(v)) v = 440;
+    return Math.min(4000, Math.max(20, v));
+  }
+
+  // イベント
+  startBtn.addEventListener('click', start);
+  stopBtn.addEventListener('click', () => { stop(); });
+  freezeBtn.addEventListener('click', freeze);
+  shotBtn.addEventListener('click', savePng);
+
+  gainEl.addEventListener('input', e => { gain = parseFloat(e.target.value); drawGrid(); });
+  timebaseEl.addEventListener('change', drawGrid);
+  trigModeEl.addEventListener('change', e => { triggerMode = e.target.value; drawGrid(); });
+  trigLvlEl.addEventListener('input', e => { triggerLevel = parseFloat(e.target.value); drawGrid(); });
+
+  window.addEventListener('resize', fitCanvas);
+  window.addEventListener('keydown', (e) => {
+    if (e.key === ' ') { e.preventDefault(); freeze(); }
+    if (e.key.toLowerCase() === 's') savePng();
+  });
+
+  // 発振器UIイベント
+  function syncFreqInputs(from, v) {
+    const fv = clampFreq(v);
+    freqNum.value = fv;
+    freqRange.value = fv;
+    if (osc) osc.frequency.setTargetAtTime(fv, audioCtx.currentTime, 0.01);
+  }
+  freqNum.addEventListener('input', e => syncFreqInputs('num', parseFloat(e.target.value)));
+  freqRange.addEventListener('input', e => syncFreqInputs('range', parseFloat(e.target.value)));
+  waveSel.addEventListener('change', () => { if (osc) osc.type = waveSel.value; });
+  volEl.addEventListener('input', () => {
+    targetVol = parseFloat(volEl.value);
+    if (outGain && !isMuted) outGain.gain.setTargetAtTime(Math.max(0.0001, targetVol), audioCtx.currentTime, 0.02);
+  });
+  muteBtn.addEventListener('click', () => {
+    isMuted = !isMuted;
+    if (outGain) outGain.gain.setTargetAtTime(isMuted ? 0.0001 : Math.max(0.0001, targetVol), audioCtx.currentTime, 0.02);
+    updateUIState();
+  });
+  toneStart.addEventListener('click', startTone);
+  toneStop.addEventListener('click', stopTone);
+
+  fitCanvas(); drawGrid();
+})();
+</script>
+</body>
+</html>
+
