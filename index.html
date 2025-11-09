@@ -71,10 +71,10 @@
         <span class="value" id="volLabel">0%</span>
       </div>
 
-      <!-- 画像保存だけ残す（フリーズ切替は無し） -->
-      <div class="group" id="saveGroup">
-        <label>波形</label>
-        <button id="saveBtn" class="small">📸 画像保存</button>
+      <!-- 画面停止（フリーズ）ボタン -->
+      <div class="group" id="freezeGroup">
+        <label>表示</label>
+        <button id="freezeBtn" class="small">⏸ 画面停止</button>
       </div>
     </div>
   </header>
@@ -123,11 +123,12 @@
   const volSlider   = document.getElementById('volSlider');
   const volLabel    = document.getElementById('volLabel');
   const presetBtns  = [...document.querySelectorAll('.hzBtn')];
-  const saveBtn     = document.getElementById('saveBtn');
+  const freezeBtn   = document.getElementById('freezeBtn');
   const statusLine  = document.getElementById('statusLine');
 
   // 状態
   let currentHz = 440; // 初期 A4
+  let frozen = false;
 
   // dBFS表示（RMS平滑）
   const smoothAlpha = 0.2; // α=0.2
@@ -136,6 +137,11 @@
   function ensureCtx(){
     if (!audioCtx){
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended'){
+      audioCtx.resume();
+    }
+    if (!outGain){
       outGain  = audioCtx.createGain();
       outGain.gain.value = 0.0; // 初期は無音
       master = audioCtx.createGain();
@@ -165,16 +171,22 @@
     const p = Math.max(0, Math.min(100, pct|0));
     volSlider.value = String(p);
     volLabel.textContent = p + '%';
-    if (outGain && audioCtx){
-      outGain.gain.setValueAtTime(p/100, audioCtx.currentTime);
-    }
+    if (outGain && audioCtx){ outGain.gain.setValueAtTime(p/100, audioCtx.currentTime); }
   }
 
   // ===== マイク & 解析 =====
   async function startMic(){
     ensureCtx();
     if (!micStream){
-      micStream = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+      // OS/ブラウザの自動処理を抑止（AGC/NS/EC）
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        },
+        video: false
+      });
       micSrc = audioCtx.createMediaStreamSource(micStream);
 
       // HPF 5Hz でDC/低域ノイズ除去
@@ -230,7 +242,7 @@
     const centerY = Math.round(h*0.48);
     ctx2d.strokeStyle = 'var(--axis)';
     ctx2d.beginPath(); ctx2d.moveTo(0, centerY + .5); ctx2d.lineTo(w, centerY + .5); ctx2d.stroke();
-    // ※ 時間軸の表記は表示しない
+    // ※ 時間軸・周波数ラベルは表示しない
   }
   function drawWave(timeData){
     const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -245,10 +257,11 @@
     ctx2d.stroke();
   }
   function render(){
+    if (frozen){ requestAnimationFrame(render); return; }
     resizeCanvasForDPR();
     drawGrid();
     if (analyser){
-      const N = analyser.fftSize/2|0;
+      const N = analyser.fftSize;               // ← 解析バッファ長を厳密に使用
       const buf = new Float32Array(N);
       analyser.getFloatTimeDomainData(buf);
       const instDb = calcDbfsFromTimeData(buf);
@@ -283,16 +296,10 @@
   toneStartBtn.addEventListener('click', ()=>{ startTone(); });
   toneStopBtn .addEventListener('click', ()=>{ stopTone();  });
 
-  // 画像保存（フリーズ機能は要求により未実装）
-  saveBtn.addEventListener('click', ()=>{
-    const tmp = document.createElement('canvas');
-    tmp.width = canvas.clientWidth; tmp.height = canvas.clientHeight;
-    const tctx = tmp.getContext('2d');
-    tctx.drawImage(canvas, 0,0, tmp.width, tmp.height);
-    const url = tmp.toDataURL('image/png');
-    const a = document.createElement('a'); a.href = url;
-    const ts = new Date().toISOString().replace(/[:.]/g,'-');
-    a.download = `scope_${ts}.png`; a.click();
+  // 画面停止（フリーズ）
+  freezeBtn.addEventListener('click', ()=>{
+    frozen = !frozen;
+    freezeBtn.textContent = frozen ? '▶ 再開' : '⏸ 画面停止';
   });
 
   // 初期状態
