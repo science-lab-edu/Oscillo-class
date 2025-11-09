@@ -4,23 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>かんたんWebオシロスコープ（学校教材版）</title>
-
-<!-- 単一ファイルでの配布を想定。インラインを許可して簡易CSPを設定 -->
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
-
 <style>
   :root{
-    --ink:#0d2b66;        /* 文字/線 濃青 */
-    --grid:#cfe2ff;       /* グリッド 薄青 */
-    --axis:#5b8bd9;       /* 軸色 */
-    --wave:#0066cc;       /* 波形色 */
-    --bg:#ffffff;         /* 背景 */
-    --panel:#f5f9ff;      /* パネル */
-    --muted:#5f6b7a;      /* 補助文字 */
-    --accent:#3b82f6;     /* 強調 */
+    --ink:#0d2b66; --grid:#cfe2ff; --axis:#5b8bd9; --wave:#0066cc;
+    --bg:#ffffff; --panel:#f5f9ff; --muted:#5f6b7a; --accent:#3b82f6;
   }
-  *{box-sizing:border-box;font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",sans-serif}
+  *{box-sizing:border-box;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",sans-serif}
   body{margin:0;background:var(--bg);color:var(--ink)}
   header{padding:10px 16px;border-bottom:1px solid #e6eefc;background:#fff;position:sticky;top:0;z-index:2}
   header h1{margin:0;font-size:18px}
@@ -29,7 +20,7 @@
   .controls{display:grid;grid-template-columns:1fr;gap:12px}
   @media(min-width:820px){.controls{grid-template-columns: 1.1fr 1fr}}
   .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-  .preset{display:grid;grid-template-columns:repeat(8, minmax(56px,1fr));gap:8px}
+  .preset{display:grid;grid-template-columns:repeat(8,minmax(56px,1fr));gap:8px}
   button{border:0;border-radius:12px;padding:10px 12px;cursor:pointer;font-weight:600}
   button:focus{outline:2px solid #9cc4ff;outline-offset:2px}
   .note{height:44px}
@@ -47,153 +38,201 @@
   .value-badge strong{font-size:18px}
   .toggle{background:#fff;border:1px solid #d6e3ff}
   .toggle.on{background:#e0ecff}
+  .seg{display:flex;gap:6px}
+  .seg button{background:#fff;border:1px solid #d6e3ff}
+  .seg button.on{background:#e0ecff}
   canvas{width:100%;height:300px;background:#fff;border:1px solid #e6eefc;border-radius:14px;display:block}
-  .meter{min-width:140px;padding:8px 10px;border-radius:10px;background:#fff;border:1px solid #e6eefc}
+  .meter{min-width:160px;padding:8px 10px;border-radius:10px;background:#fff;border:1px solid #e6eefc}
   footer{padding:10px 16px;color:var(--muted);font-size:12px}
 </style>
 </head>
 <body>
-  <header>
-    <h1>かんたんWebオシロスコープ（学校教材版）</h1>
-  </header>
+<header><h1>かんたんWebオシロスコープ（学校教材版）</h1></header>
 
-  <div class="wrap">
-    <div class="controls panel">
-      <!-- プリセット音（アルトリコーダー：画面表示はドレミ、周波数は内部で設定） -->
-      <div class="row" aria-label="プリセット音">
-        <div class="preset" id="presetArea">
-          <!-- ラベルのみ。周波数は表示しない -->
-          <button class="note" data-n="ド"  data-f="349.228">ド</button>
-          <button class="note" data-n="レ"  data-f="392.000">レ</button>
-          <button class="note" data-n="ミ"  data-f="440.000">ミ</button>
-          <button class="note" data-n="ファ" data-f="466.164">ファ</button><!--（B♭相当）-->
-          <button class="note" data-n="ソ"  data-f="523.251">ソ</button>
-          <button class="note" data-n="ラ"  data-f="587.330">ラ</button>
-          <button class="note" data-n="シ"  data-f="659.255">シ</button>
-          <button class="note" data-n="ド↑" data-f="698.456">ド</button>
-        </div>
-      </div>
-
-      <!-- 音量（発信器の出力％表示） -->
-      <div class="row labeled" aria-label="音量">
-        <label for="vol"><strong>音量</strong></label>
-        <input id="vol" type="range" min="0" max="100" step="1" value="10" style="flex:1">
-        <div class="value-badge"><strong id="volPct">10</strong>%</div>
-        <span class="tiny">※発信器の出力値</span>
-      </div>
-
-      <!-- 画面停止（描画のみ停止）。音は止めない -->
-      <div class="row">
-        <button id="freezeBtn" class="toggle" aria-pressed="false">画面停止</button>
-        <span class="tiny">※描画のみ停止／再開できます</span>
+<div class="wrap">
+  <div class="controls panel">
+    <!-- プリセット -->
+    <div class="row" aria-label="プリセット音">
+      <div class="preset" id="presetArea">
+        <button class="note" data-n="ド"  data-f="349.228">ド</button>
+        <button class="note" data-n="レ"  data-f="392.000">レ</button>
+        <button class="note" data-n="ミ"  data-f="440.000">ミ</button>
+        <button class="note" data-n="ファ" data-f="466.164">ファ</button>
+        <button class="note" data-n="ソ"  data-f="523.251">ソ</button>
+        <button class="note" data-n="ラ"  data-f="587.330">ラ</button>
+        <button class="note" data-n="シ"  data-f="659.255">シ</button>
+        <button class="note" data-n="ド↑" data-f="698.456">ド</button>
       </div>
     </div>
 
-    <!-- 波形表示（マイク波形を中央基準で表示）。dBメータは右側/下部に表示 -->
-    <div class="panel" style="margin-top:12px">
-      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
-        <div style="flex:1;min-width:260px">
-          <canvas id="scope" width="1200" height="360" aria-label="マイク波形表示"></canvas>
-        </div>
-        <div class="meter" aria-live="polite">
-          <div class="tiny">マイク音量（概算 dBFS）</div>
-          <div style="font-variant-numeric:tabular-nums;font-size:24px" id="dbVal">--.- dB</div>
-        </div>
+    <!-- 音量（発信器 出力％） + 周波数補正 -->
+    <div class="row labeled" aria-label="音量">
+      <label for="vol"><strong>音量</strong></label>
+      <input id="vol" type="range" min="0" max="100" step="1" value="20" style="flex:1">
+      <div class="value-badge"><strong id="volPct">20</strong>%</div>
+      <span class="tiny" id="compBadge" style="margin-left:8px;">（補正中）</span>
+      <button id="compToggle" class="toggle on" aria-pressed="true" title="周波数ごとの音量補正">補正 ON</button>
+    </div>
+
+    <!-- コントロール群：画面停止/音停止/マイク停止/縦レンジ -->
+    <div class="row" style="gap:10px">
+      <button id="freezeBtn" class="toggle" aria-pressed="false">画面停止</button>
+      <button id="toneStopBtn" class="toggle">音の発信停止</button>
+      <button id="micToggleBtn" class="toggle" aria-pressed="true">マイク停止</button>
+      <div class="seg" role="group" aria-label="縦レンジ">
+        <button class="on" data-r="2">縦レンジ×2</button>
+        <button data-r="4">×4</button>
+        <button data-r="8">×8</button>
       </div>
-      <div class="tiny" style="margin-top:6px">
-        表示はマイクで拾った波形／音量（dBFS）。<br>
-        ※周波数や時間目盛りは非表示にしています。
-      </div>
+      <span class="tiny">※縦レンジを上げるほど振幅が大きく表示</span>
     </div>
   </div>
 
-  <footer class="wrap">
-    <div>© 教材用シンプル版 — 正弦波のみ／色分けボタン／音量％／マイクdB表示／画面停止</div>
-  </footer>
+  <!-- 表示部 -->
+  <div class="panel" style="margin-top:12px">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
+      <div style="flex:1;min-width:260px">
+        <canvas id="scope" width="1200" height="360" aria-label="マイク波形表示"></canvas>
+      </div>
+      <div class="meter" aria-live="polite">
+        <div class="tiny">マイク音量（概算 dBFS）</div>
+        <div style="font-variant-numeric:tabular-nums;font-size:24px" id="dbVal">--.- dB</div>
+      </div>
+    </div>
+    <div class="tiny" style="margin-top:6px">
+      表示はマイクで拾った波形／音量（dBFS）。周波数や時間目盛りは非表示。
+    </div>
+  </div>
+</div>
+
+<footer class="wrap">
+  <div>© 教材用シンプル版 — 正弦波のみ／色分けボタン／音量％／マイクdB表示／画面停止＝音も停止／縦レンジ／周波数補正</div>
+</footer>
 
 <script>
 (() => {
-  // ========= 基本ノード =========
+  // ====== Audio 基本 ======
   const AC = window.AudioContext || window.webkitAudioContext;
   const audio = new AC({latencyHint:'interactive'});
-  let osc = null;
-  const outGain = audio.createGain();
-  outGain.gain.value = 0.10; // 初期 10%
-  outGain.connect(audio.destination);
 
-  // 出力側アナライザ（発信器モニタ用・描画はマイクのみだが安定化に利用可能）
+  let osc = null;
+  const tonePreGain = audio.createGain(); // 周波数補正用
+  tonePreGain.gain.value = 1.0;
+  const outGain = audio.createGain();     // ユーザー音量（％）
+  outGain.gain.value = 0.20;              // 初期20%
+  tonePreGain.connect(outGain).connect(audio.destination);
+
+  // 分析用
   const anaOut = audio.createAnalyser();
   anaOut.fftSize = 2048;
-  anaOut.smoothingTimeConstant = 0.0; // 減衰見え対策：発振出力の垂れを避ける
+  anaOut.smoothingTimeConstant = 0.0;
   outGain.connect(anaOut);
 
-  // ========= マイク入力 =========
+  // ====== マイク ======
   const anaMic = audio.createAnalyser();
   anaMic.fftSize = 2048;
-  anaMic.smoothingTimeConstant = 0.1; // 見やすさのため少しだけ平滑化
+  anaMic.smoothingTimeConstant = 0.10;
   const timeMic = new Uint8Array(anaMic.fftSize);
 
   let micReady = false;
   let micStreamNode = null;
+  let micStream = null;
 
-  async function initMic(){
+  async function startMic(){
+    if(micReady) return;
     try{
-      // 学校PCでの自動調整による減衰や高域ロールオフを抑える
-      const stream = await navigator.mediaDevices.getUserMedia({
+      micStream = await navigator.mediaDevices.getUserMedia({
         audio:{
-          echoCancellation:false,
-          noiseSuppression:false,
-          autoGainControl:false,
-          channelCount:1,
-          sampleRate: audio.sampleRate
+          echoCancellation:false, noiseSuppression:false, autoGainControl:false,
+          channelCount:1, sampleRate: audio.sampleRate
         }
       });
-      micStreamNode = audio.createMediaStreamSource(stream);
+      micStreamNode = audio.createMediaStreamSource(micStream);
       micStreamNode.connect(anaMic);
       micReady = true;
-    }catch(err){
-      console.error('マイク取得に失敗:', err);
-      alert('マイクへのアクセスが許可されませんでした。ブラウザの許可設定を確認してください。');
+      micToggleBtn.classList.add('on');
+      micToggleBtn.setAttribute('aria-pressed','true');
+      micToggleBtn.textContent = 'マイク停止';
+    }catch(e){
+      alert('マイクの許可が必要です。ブラウザの許可設定をご確認ください。');
     }
   }
+  function stopMic(){
+    try{ micStreamNode && micStreamNode.disconnect(); }catch{}
+    if(micStream){
+      micStream.getTracks().forEach(t=>t.stop());
+    }
+    micStreamNode = null;
+    micStream = null;
+    micReady = false;
+    micToggleBtn.classList.remove('on');
+    micToggleBtn.setAttribute('aria-pressed','false');
+    micToggleBtn.textContent = 'マイク開始';
+  }
 
-  // ========= UI =========
+  // ====== UI 要素 ======
   const vol = document.getElementById('vol');
   const volPct = document.getElementById('volPct');
   const scope = document.getElementById('scope');
   const ctx = scope.getContext('2d');
   const freezeBtn = document.getElementById('freezeBtn');
+  const toneStopBtn = document.getElementById('toneStopBtn');
+  const micToggleBtn = document.getElementById('micToggleBtn');
   const dbVal = document.getElementById('dbVal');
+  const compToggle = document.getElementById('compToggle');
+  const compBadge = document.getElementById('compBadge');
+  const rangeSeg = document.querySelector('.seg');
+
+  // 縦レンジ倍率
+  let visGain = 2; // ×2 が初期
+  rangeSeg.addEventListener('click', (e)=>{
+    const b = e.target.closest('button[data-r]');
+    if(!b) return;
+    rangeSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    visGain = Number(b.dataset.r);
+  });
 
   function setVolumeFromSlider(){
-    const pct = Number(vol.value)/100;      // 0.00 - 1.00
-    outGain.gain.setValueAtTime(pct, audio.currentTime); // 減衰しない定常値
+    const pct = Number(vol.value)/100;          // 0-1
+    outGain.gain.setValueAtTime(pct, audio.currentTime);
     volPct.textContent = Math.round(Number(vol.value));
   }
   vol.addEventListener('input', setVolumeFromSlider);
 
-  // プリセット：ボタン押下で周波数切り替え、押すたびに再発音
-  document.getElementById('presetArea').addEventListener('click', async (e)=>{
-    const btn = e.target.closest('.note');
-    if(!btn) return;
-
-    // Autoplay対策：ユーザー操作時に必ずresume
-    if(audio.state !== 'running'){
-      try{ await audio.resume(); }catch{}
-
-    }
-    if(!micReady) await initMic();
-
-    const f = Number(btn.dataset.f);
-    startOsc(f);
+  // ====== 周波数補正（ユーザー提供の計測値に基づく） ======
+  // 基準レベル（平均 -34.425 dBFS 付近）に合わせる補正倍率
+  const compByNote = {
+    "ド": 0.756,  // -32.0 → 少し下げる
+    "レ": 0.849,  // -33.0
+    "ミ": 2.059,  // -40.7 → 大きく上げる
+    "ファ":1.544, // -38.2
+    "ソ": 1.199,  // -36.0
+    "ラ": 0.952,  // -34.0（※ご提供値の「ラ」は-34.0dBと解釈）
+    "シ": 0.714,  // -31.5
+    "ド↑":0.601   // -30.0
+  };
+  let compOn = true;
+  compToggle.addEventListener('click', ()=>{
+    compOn = !compOn;
+    compToggle.classList.toggle('on', compOn);
+    compToggle.setAttribute('aria-pressed', String(compOn));
+    compToggle.textContent = compOn ? '補正 ON' : '補正 OFF';
+    compBadge.style.display = compOn ? '' : 'none';
+    // 補正切替時に現在音にも反映
+    applyToneComp(currentNoteName);
   });
 
-  function startOsc(freq){
-    stopOsc(); // 一旦止めて作り直す（クリックで確実に鳴るように）
+  // ====== 発振制御 ======
+  let currentNoteName = null;
+
+  function startOsc(freq, noteName){
+    stopOsc();
     osc = audio.createOscillator();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(freq, audio.currentTime);
-    osc.connect(outGain);
+    osc.connect(tonePreGain);
+    applyToneComp(noteName);
     osc.start();
   }
   function stopOsc(){
@@ -203,118 +242,97 @@
       osc = null;
     }
   }
+  function applyToneComp(noteName){
+    currentNoteName = noteName || currentNoteName;
+    const comp = (compOn && currentNoteName && compByNote[currentNoteName]) ? compByNote[currentNoteName] : 1.0;
+    tonePreGain.gain.setValueAtTime(comp, audio.currentTime);
+  }
 
-  // ========= 画面停止 =========
+  // プリセット押下で再生＆マイク起動
+  document.getElementById('presetArea').addEventListener('click', async (e)=>{
+    const btn = e.target.closest('.note'); if(!btn) return;
+    if(audio.state !== 'running'){ try{ await audio.resume(); }catch{} }
+    await startMic();
+    const f = Number(btn.dataset.f);
+    const name = btn.dataset.n;
+    startOsc(f, name);
+  });
+
+  // ====== 画面停止（音も停止） ======
   let freeze = false;
   freezeBtn.addEventListener('click', ()=>{
     freeze = !freeze;
     freezeBtn.classList.toggle('on', freeze);
     freezeBtn.setAttribute('aria-pressed', String(freeze));
-    freezeBtn.textContent = freeze ? '画面停止（停止中）' : '画面停止';
-    // 停止→再開時に描画を即リフレッシュ
-    if(!freeze) drawOnce(true);
+    freezeBtn.textContent = freeze ? '画面停止（停止中：音も停止）' : '画面停止';
+    if(freeze){
+      stopOsc(); // 画面停止で音も止める
+    }else{
+      // 再開時は描画のみ再開（音はプリセットを押した時に再開）
+      drawOnce(true);
+    }
   });
 
-  // ========= 描画 =========
+  // 個別ボタン：音の発信停止／マイク停止・開始
+  toneStopBtn.addEventListener('click', ()=> stopOsc());
+  micToggleBtn.addEventListener('click', async ()=>{
+    const on = micToggleBtn.classList.contains('on');
+    if(on){ stopMic(); } else { await startMic(); }
+  });
+
+  // ====== 描画 ======
   function drawGrid(){
     const W = scope.width, H = scope.height;
     ctx.clearRect(0,0,W,H);
-
-    // 背景
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0,0,W,H);
-
-    // グリッド
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
     ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
-    ctx.lineWidth = 1;
-    ctx.beginPath();
+    ctx.lineWidth = 1; ctx.beginPath();
     const gy = 6, gx = 12;
-    for(let i=1;i<gy;i++){
-      const y = Math.round(H*i/gy)+0.5;
-      ctx.moveTo(0,y); ctx.lineTo(W,y);
-    }
-    for(let i=1;i<gx;i++){
-      const x = Math.round(W*i/gx)+0.5;
-      ctx.moveTo(x,0); ctx.lineTo(x,H);
-    }
+    for(let i=1;i<gy;i++){ const y = Math.round(H*i/gy)+0.5; ctx.moveTo(0,y); ctx.lineTo(W,y); }
+    for(let i=1;i<gx;i++){ const x = Math.round(W*i/gx)+0.5; ctx.moveTo(x,0); ctx.lineTo(x,H); }
     ctx.stroke();
-
-    // 中央基準線（上下対称の真ん中に表示）
     ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--axis');
-    ctx.beginPath();
-    ctx.moveTo(0, H/2 + 0.5);
-    ctx.lineTo(W, H/2 + 0.5);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,H/2+0.5); ctx.lineTo(W,H/2+0.5); ctx.stroke();
   }
 
   function drawWave(){
     const W = scope.width, H = scope.height;
-    // マイクが未準備なら簡易表示
     if(!micReady){
       ctx.fillStyle = '#999';
-      ctx.fillText('マイク未許可：プリセットボタンを押すか、マイクを許可してください', 20, 28);
+      ctx.fillText('マイク未許可：プリセットを押すか、マイク開始を押してください', 20, 28);
       return;
     }
-
     anaMic.getByteTimeDomainData(timeMic);
-
     ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--wave');
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-
-    // キャンバス幅に合わせてサンプリング点を間引き
+    ctx.lineWidth = 2; ctx.beginPath();
     const step = Math.ceil(timeMic.length / W);
-    for(let x=0, i=0; x<W; x++, i+=step){
-      const v = (timeMic[i] - 128) / 128;      // -1..+1
-      const y = H/2 - v * (H*0.45);           // 上下10%を余白
-      if(x===0) ctx.moveTo(0,y);
-      else ctx.lineTo(x,y);
+    for(let x=0,i=0; x<W; x++, i+=step){
+      const v = (timeMic[i]-128)/128;              // -1..+1
+      const y = H/2 - v * (H*0.45*visGain);        // 縦レンジで拡大
+      const yy = Math.max(1, Math.min(H-1, y));    // クリップ
+      if(x===0) ctx.moveTo(0,yy); else ctx.lineTo(x,yy);
     }
     ctx.stroke();
   }
 
   function calcDbFS(){
-    // dBFS表示（マイク）: RMS→dBFS
     const buf = new Float32Array(anaMic.fftSize);
-    anaMic.getFloatTimeDomainData(buf);
-    let sum=0;
-    for(let i=0;i<buf.length;i++){
-      const v = buf[i];
-      sum += v*v;
-    }
+    if(micReady){ anaMic.getFloatTimeDomainData(buf); }
+    let sum=0; for(let i=0;i<buf.length;i++){ const v=buf[i]||0; sum += v*v; }
     const rms = Math.sqrt(sum / buf.length) || 0;
-    // 0 dBFS を1.0に相当とし、最小値を-90 dBで頭打ち
-    let db = 20 * Math.log10(rms);
-    if(!isFinite(db)) db = -Infinity;
+    let db = 20*Math.log10(rms); if(!isFinite(db)) db = -Infinity;
     db = Math.max(db, -90);
     dbVal.textContent = (db===-Infinity ? '--.-' : db.toFixed(1)) + ' dB';
   }
 
   function drawOnce(force=false){
     if(freeze && !force) return;
-    drawGrid();
-    drawWave();
-    calcDbFS();
+    drawGrid(); drawWave(); calcDbFS();
   }
+  (function loop(){ drawOnce(); requestAnimationFrame(loop); })();
 
-  function loop(){
-    drawOnce();
-    requestAnimationFrame(loop);
-  }
-  loop();
-
-  // ========= 起動時の初期化 =========
-  setVolumeFromSlider();
-  // クリック等があるまでAudioContextはsuspendedのことがある。必要時にresumeする。
-
-  // ページ離脱時に停止（授業で開きっぱなしの誤動作防止）
-  window.addEventListener('visibilitychange', ()=>{
-    if(document.hidden){
-      // 音は鳴らし続けたい場合は停止しない。ここでは停止しない仕様にする。
-      // stopOsc();
-    }
-  });
-
+  // ====== 初期化 ======
+  setVolumeFromSlider(); // 音量％
 })();
 </script>
 </body>
