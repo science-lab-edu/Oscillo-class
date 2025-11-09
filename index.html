@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>かんたんWebオシロスコープ（学校教材版）</title>
-<!-- このファイル以外の読み込みを禁止（自己完結） -->
+<!-- 1ファイル完結 / HTTPS 前提（マイク権限用） -->
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
 <style>
   :root{
-    --ink:#0d2b66;        /* 文字/線 */
+    --ink:#0d2b66;        /* 文字 */
     --grid:#cfe2ff;       /* グリッド */
     --axis:#5b8bd9;       /* 軸色 */
-    --wave:#0066cc;       /* 波形色 */
+    --wave:#0066cc;       /* 波形 */
     --bg:#ffffff;         /* 背景 */
     --panel:#f5f9ff;      /* パネル */
     --muted:#5f6b7a;      /* 補助文字 */
@@ -23,17 +23,27 @@
   .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
   .group{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fff;border:1px solid #e6eefc;border-radius:10px;padding:8px 10px}
   .group label{font-size:12px;color:var(--muted);margin-right:4px}
-  button{appearance:none;border:1px solid #cfe0ff;background:#fff;border-radius:8px;padding:6px 10px;font-size:14px;cursor:pointer}
-  button:hover{background:#f3f8ff}
+  button{appearance:none;border:1px solid #cfe0ff;background:#fff;border-radius:10px;padding:8px 12px;font-size:14px;cursor:pointer;min-width:44px}
+  button:hover{opacity:.95}
   button.primary{background:#e8f1ff;border-color:#b9d1ff}
   button.danger{background:#fff0f0;border-color:#ffc0c0}
-  button.small{font-size:12px;padding:4px 8px}
-  .value{font-variant-numeric:tabular-nums}
+  .small{font-size:12px;padding:6px 10px}
   .status{font-size:12px;color:var(--muted)}
   main{padding:10px 14px}
   canvas{width:100%;height:300px;display:block;background:#fff;border:1px solid #e6eefc;border-radius:12px;box-shadow:0 1px 0 rgba(13,43,102,.04) inset}
-  .help{padding:6px 14px;font-size:12px;color:var(--muted)}
-  /* 中央線をやや上に見せるための余白感覚は描画側で調整 */
+  /* プリセット色（ド〜ド）：視覚的に音の違いを示す */
+  .note-do{background:#ffe3e3;border-color:#ffc2c2}
+  .note-re{background:#fff1cf;border-color:#ffd48a}
+  .note-mi{background:#f5ffd2;border-color:#dff28a}
+  .note-fa{background:#e0ffe8;border-color:#b7f4c4}
+  .note-so{background:#dff5ff;border-color:#bfe6ff}
+  .note-la{background:#e9e0ff;border-color:#cdbbff}
+  .note-si{background:#ffe0fa;border-color:#ffc2f0}
+  .note-do-hi{background:#e8e8e8;border-color:#d0d0d0}
+  /* スライダー */
+  .slider{appearance:none;width:180px;height:6px;border-radius:999px;background:#e6eefc;outline:none}
+  .slider::-webkit-slider-thumb{appearance:none;width:18px;height:18px;border-radius:50%;background:#5b8bd9;border:1px solid #3e6fc2}
+  .value{font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -46,14 +56,7 @@
         <button id="micStart" class="primary">▶ 開始</button>
         <button id="micStop"  class="danger">■ 停止</button>
       </div>
-
-      <!-- 表示：フリーズ＆保存 -->
-      <div class="group" id="viewGroup">
-        <label>波形表示</label>
-        <button id="freezeBtn">⏸ 停止</button>
-        <button id="saveBtn" class="small">📸 画像保存</button>
-      </div>
-
+      
       <!-- 発振器：再生/停止 -->
       <div class="group" id="oscGroup">
         <label>発振器（正弦波）</label>
@@ -61,42 +64,39 @@
         <button id="toneStop"  class="danger">■ 停止</button>
       </div>
 
-      <!-- 音量ボタン群（％） -->
+      <!-- 音量（スライダー + 数値%） -->
       <div class="group" id="volGroup">
         <label>音量</label>
-        <div class="row">
-          <button class="volBtn small" data-pct="0">0%</button>
-          <button class="volBtn small" data-pct="25">25%</button>
-          <button class="volBtn small" data-pct="50">50%</button>
-          <button class="volBtn small" data-pct="75">75%</button>
-          <button class="volBtn small" data-pct="100">100%</button>
-        </div>
-        <span class="value" id="volLabel">出力: 0%</span>
+        <input id="volSlider" type="range" class="slider" min="0" max="100" step="1" value="0" aria-label="音量(%)">
+        <span class="value" id="volLabel">0%</span>
+      </div>
+
+      <!-- 画像保存だけ残す（フリーズ切替は無し） -->
+      <div class="group" id="saveGroup">
+        <label>波形</label>
+        <button id="saveBtn" class="small">📸 画像保存</button>
       </div>
     </div>
   </header>
 
-  <div class="help">Space＝フリーズ切替 / S＝画像保存　｜　時間軸= 2 ms/div（合計 ~20 ms）</div>
-
-  <!-- 周波数プリセット：アルトリコーダー（F管）ドレミファソラシド -->
+  <!-- 周波数プリセット：アルトリコーダー（F管）ドレミファソラシド / ラベルは仮名のみ -->
   <main>
     <div class="group" id="presetGroup">
       <label>プリセット（アルト：ド=F4）</label>
       <div class="row">
-        <button class="hzBtn" data-hz="349.23">ド F4 349.23Hz</button>
-        <button class="hzBtn" data-hz="392.00">レ G4 392.00Hz</button>
-        <button class="hzBtn" data-hz="440.00">ミ A4 440.00Hz</button>
-        <button class="hzBtn" data-hz="466.16">ファ Bb4 466.16Hz</button>
-        <button class="hzBtn" data-hz="523.25">ソ C5 523.25Hz</button>
-        <button class="hzBtn" data-hz="587.33">ラ D5 587.33Hz</button>
-        <button class="hzBtn" data-hz="659.25">シ E5 659.25Hz</button>
-        <button class="hzBtn" data-hz="698.46">ド F5 698.46Hz</button>
+        <button class="hzBtn note-do"    data-hz="349.23">ド</button>
+        <button class="hzBtn note-re"    data-hz="392.00">レ</button>
+        <button class="hzBtn note-mi"    data-hz="440.00">ミ</button>
+        <button class="hzBtn note-fa"    data-hz="466.16">ファ</button>
+        <button class="hzBtn note-so"    data-hz="523.25">ソ</button>
+        <button class="hzBtn note-la"    data-hz="587.33">ラ</button>
+        <button class="hzBtn note-si"    data-hz="659.25">シ</button>
+        <button class="hzBtn note-do-hi" data-hz="698.46">ド</button>
       </div>
-      <span class="value" id="freqLabel">周波数: —</span>
     </div>
 
     <div class="status" id="statusLine">
-      ステータス：時間軸=2 ms/div 固定　|　マイク音量 dBFS: —.— dB
+      マイク音量 dBFS: —.— dB
     </div>
 
     <canvas id="scope" width="600" height="300"></canvas>
@@ -104,97 +104,73 @@
 
 <script>
 (() => {
-  // ==========
-  // オーディオ基盤
-  // ==========
+  // ===== オーディオ基盤 =====
   let audioCtx;
-  let osc;                 // Sine oscillator
-  let outGain;             // 出力ゲイン（発振器出力％はこの値で管理）
-  let master;              // 将来の拡張用（A+Bなど）
+  let osc;                 // 正弦波オシレータ
+  let outGain;             // 発振器の出力ゲイン（0..1）
+  let master;              // 将来拡張用
   let micStream, micSrc, hpf, analyser;
 
   // 描画
   const canvas = document.getElementById('scope');
   const ctx2d  = canvas.getContext('2d');
-  let frozen = false;
 
   // UI
   const micStartBtn = document.getElementById('micStart');
   const micStopBtn  = document.getElementById('micStop');
   const toneStartBtn= document.getElementById('toneStart');
   const toneStopBtn = document.getElementById('toneStop');
+  const volSlider   = document.getElementById('volSlider');
   const volLabel    = document.getElementById('volLabel');
-  const freqLabel   = document.getElementById('freqLabel');
   const presetBtns  = [...document.querySelectorAll('.hzBtn')];
-  const volBtns     = [...document.querySelectorAll('.volBtn')];
-  const freezeBtn   = document.getElementById('freezeBtn');
   const saveBtn     = document.getElementById('saveBtn');
   const statusLine  = document.getElementById('statusLine');
 
   // 状態
-  let currentHz = null;
-  let currentVolPct = 0;
+  let currentHz = 440; // 初期 A4
 
   // dBFS表示（RMS平滑）
   const smoothAlpha = 0.2; // α=0.2
   let smoothedDb = null;
 
-  // 初期化（必要時に作成）
   function ensureCtx(){
     if (!audioCtx){
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       outGain  = audioCtx.createGain();
-      outGain.gain.value = 0.0; // 初期はミュート
+      outGain.gain.value = 0.0; // 初期は無音
       master = audioCtx.createGain();
       master.gain.value = 1.0;
-
       outGain.connect(master).connect(audioCtx.destination);
     }
   }
 
-  // ==========
-  // 発振器（正弦波）
-  // ==========
+  // ===== 発振器（正弦波） =====
   function ensureOsc(){
     ensureCtx();
     if (!osc){
       osc = audioCtx.createOscillator();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(currentHz || 440, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(currentHz, audioCtx.currentTime);
       osc.connect(outGain);
       osc.start();
     }
   }
-  function startTone(){
-    ensureCtx();
-    ensureOsc();
-  }
-  function stopTone(){
-    if (osc){
-      try{ osc.disconnect(); }catch(e){}
-      osc = null;
-    }
-  }
+  function startTone(){ ensureCtx(); ensureOsc(); }
+  function stopTone(){ if (osc){ try{ osc.disconnect(); }catch(e){} osc = null; } }
   function setFrequency(hz){
     currentHz = hz;
-    freqLabel.textContent = `周波数: ${hz.toFixed(2)} Hz`;
-    if (osc && audioCtx){
-      osc.frequency.setValueAtTime(hz, audioCtx.currentTime);
-    }
+    if (osc && audioCtx){ osc.frequency.setValueAtTime(hz, audioCtx.currentTime); }
   }
   function setVolumePct(pct){
-    currentVolPct = Math.max(0, Math.min(100, pct|0));
-    volLabel.textContent = `出力: ${currentVolPct}%`;
-    if (outGain){
-      // 出力％は線形でOK（教材用のシンプル仕様）
-      const v = currentVolPct/100;
-      outGain.gain.setValueAtTime(v, audioCtx?.currentTime || 0);
+    const p = Math.max(0, Math.min(100, pct|0));
+    volSlider.value = String(p);
+    volLabel.textContent = p + '%';
+    if (outGain && audioCtx){
+      outGain.gain.setValueAtTime(p/100, audioCtx.currentTime);
     }
   }
 
-  // ==========
-  // マイク開始/停止 & 解析
-  // ==========
+  // ===== マイク & 解析 =====
   async function startMic(){
     ensureCtx();
     if (!micStream){
@@ -206,13 +182,12 @@
       hpf.type = 'highpass';
       hpf.frequency.value = 5;
 
-      // Analyser（時間波形取得）
+      // Analyser（時間波形）
       analyser = audioCtx.createAnalyser();
-      // 20ms窓になるようfftSizeを調整
-      const targetSamples = Math.max(256, Math.round(audioCtx.sampleRate * 0.02)); // 約20ms
+      const targetSamples = Math.max(256, Math.round(audioCtx.sampleRate * 0.02)); // ≈20ms
       const pow2 = (n)=>Math.pow(2, Math.round(Math.log2(n)));
       analyser.fftSize = Math.min(32768, Math.max(512, pow2(targetSamples*2)));
-      analyser.smoothingTimeConstant = 0.0; // 生データ重視
+      analyser.smoothingTimeConstant = 0.0;
 
       micSrc.connect(hpf).connect(analyser);
     }
@@ -221,206 +196,108 @@
     if (analyser){ try{ hpf.disconnect(); }catch(e){} }
     analyser = null; hpf = null;
     if (micSrc){ try{ micSrc.disconnect(); }catch(e){} micSrc = null; }
-    if (micStream){
-      micStream.getTracks().forEach(t=>t.stop());
-      micStream = null;
-    }
+    if (micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream = null; }
   }
 
-  // ==========
-  // dBFS 計算（RMS→20log10）
-  // ==========
   function calcDbfsFromTimeData(buf){
-    // buf: -1.0..1.0
-    let sum = 0;
-    for (let i=0;i<buf.length;i++){
-      const v = buf[i];
-      sum += v*v;
-    }
+    let sum = 0; for (let i=0;i<buf.length;i++){ const v = buf[i]; sum += v*v; }
     const rms = Math.sqrt(sum / buf.length) || 0;
-    const db = 20*Math.log10(rms + 1e-12); // 0付近は -∞ 回避
+    const db = 20*Math.log10(rms + 1e-12); // -∞回避
     return db;
   }
 
-  // ==========
-  // 描画
-  // ==========
+  // ===== 描画 =====
   function resizeCanvasForDPR(){
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const cssW = canvas.clientWidth;
-    const cssH = canvas.clientHeight;
+    const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
     canvas.width  = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
-    ctx2d.setTransform(dpr,0,0,dpr,0,0); // CSSピクセル座標で描く
+    ctx2d.setTransform(dpr,0,0,dpr,0,0);
   }
-
   function drawGrid(){
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
     ctx2d.clearRect(0,0,w,h);
-
-    // 背景
-    ctx2d.fillStyle = '#fff';
-    ctx2d.fillRect(0,0,w,h);
-
-    // グリッド
-    ctx2d.strokeStyle = 'var(--grid)';
-    ctx2d.lineWidth = 1;
+    ctx2d.fillStyle = '#fff'; ctx2d.fillRect(0,0,w,h);
+    ctx2d.strokeStyle = 'var(--grid)'; ctx2d.lineWidth = 1;
     const divs = 10;
-    // 縦線（時間軸 2ms/div）
-    for (let i=0;i<=divs;i++){
-      const x = (w/divs)*i;
-      ctx2d.beginPath();
-      ctx2d.moveTo(x, 0);
-      ctx2d.lineTo(x, h);
-      ctx2d.stroke();
+    for (let i=0;i<=divs;i++){ // 縦線
+      const x = (w/divs)*i; ctx2d.beginPath(); ctx2d.moveTo(x,0); ctx2d.lineTo(x,h); ctx2d.stroke();
     }
-    // 横線（振幅目安）
-    for (let j=0;j<=divs;j++){
-      const y = (h/divs)*j;
-      ctx2d.beginPath();
-      ctx2d.moveTo(0, y);
-      ctx2d.lineTo(w, y);
-      ctx2d.stroke();
+    for (let j=0;j<=divs;j++){ // 横線
+      const y = (h/divs)*j; ctx2d.beginPath(); ctx2d.moveTo(0,y); ctx2d.lineTo(w,y); ctx2d.stroke();
     }
-
-    // 中央線（やや上に）
-    const centerY = Math.round(h*0.48); // 少し上に
-    ctx2d.strokeStyle = 'var(--axis)';
-    ctx2d.beginPath();
-    ctx2d.moveTo(0, centerY + 0.5);
-    ctx2d.lineTo(w, centerY + 0.5);
-    ctx2d.stroke();
-
-    // 軸ラベル
-    ctx2d.fillStyle = 'var(--muted)';
-    ctx2d.font = '12px system-ui, sans-serif';
-    ctx2d.fillText('時間 2 ms/div（~20 ms窓）', 8, 14);
-    ctx2d.fillText('振幅', 8, h-6);
-  }
-
-  function drawWave(timeData){
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
+    // 中央線（やや上）
     const centerY = Math.round(h*0.48);
-
-    ctx2d.strokeStyle = 'var(--wave)';
-    ctx2d.lineWidth = 2;
-    ctx2d.beginPath();
-
+    ctx2d.strokeStyle = 'var(--axis)';
+    ctx2d.beginPath(); ctx2d.moveTo(0, centerY + .5); ctx2d.lineTo(w, centerY + .5); ctx2d.stroke();
+    // ※ 時間軸の表記は表示しない
+  }
+  function drawWave(timeData){
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const centerY = Math.round(h*0.48);
+    ctx2d.strokeStyle = 'var(--wave)'; ctx2d.lineWidth = 2; ctx2d.beginPath();
     const len = timeData.length;
     for (let i=0;i<len;i++){
-      const t = i / (len-1);
-      const x = t * w;
-      // -1..1 → ピクセル
-      const v = timeData[i];
+      const t = i/(len-1), x = t*w; const v = timeData[i];
       const y = centerY - v * (h*0.40); // 固定スケール
       if (i===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
     }
     ctx2d.stroke();
   }
-
   function render(){
-    if (!frozen){
-      resizeCanvasForDPR();
-      drawGrid();
-
-      if (analyser){
-        const N = analyser.fftSize/2|0;
-        const buf = new Float32Array(N);
-        analyser.getFloatTimeDomainData(buf);
-
-        // dBFS（平滑）
-        const instDb = calcDbfsFromTimeData(buf);
-        smoothedDb = (smoothedDb==null) ? instDb
-                     : smoothAlpha*instDb + (1-smoothAlpha)*smoothedDb;
-        statusLine.textContent = `ステータス：時間軸=2 ms/div 固定　|　マイク音量 dBFS: ${smoothedDb.toFixed(1)} dB`;
-
-        // 波形描画
-        drawWave(buf);
-      }
+    resizeCanvasForDPR();
+    drawGrid();
+    if (analyser){
+      const N = analyser.fftSize/2|0;
+      const buf = new Float32Array(N);
+      analyser.getFloatTimeDomainData(buf);
+      const instDb = calcDbfsFromTimeData(buf);
+      smoothedDb = (smoothedDb==null)? instDb : smoothAlpha*instDb + (1-smoothAlpha)*smoothedDb;
+      statusLine.textContent = `マイク音量 dBFS: ${smoothedDb.toFixed(1)} dB`;
+      drawWave(buf);
     }
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);
 
-  // ==========
-  // 事件束ね
-  // ==========
-  // プリセット周波数ボタン
+  // ===== イベント束ね =====
   presetBtns.forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const hz = Number(btn.dataset.hz);
       if (!isNaN(hz)) setFrequency(hz);
-      // 発振中なら即時反映される
     });
   });
-
-  // 音量ボタン
-  volBtns.forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const pct = Number(btn.dataset.pct);
-      if (!isNaN(pct)) setVolumePct(pct);
-    });
+  volSlider.addEventListener('input', ()=>{
+    const p = Number(volSlider.value)||0; volLabel.textContent = p + '%';
+    if (outGain && audioCtx){ outGain.gain.setValueAtTime(p/100, audioCtx.currentTime); }
   });
 
   // マイク
   micStartBtn.addEventListener('click', async ()=>{
-    try{
-      await startMic();
-    }catch(err){
-      alert('マイクの開始に失敗しました。ブラウザの権限やHTTPSを確認してください。');
-      console.error(err);
-    }
+    try{ await startMic(); }
+    catch(err){ alert('マイク開始に失敗しました。権限とHTTPSを確認してください。'); console.error(err); }
   });
-  micStopBtn.addEventListener('click', ()=>{
-    stopMic();
-  });
+  micStopBtn.addEventListener('click', ()=>{ stopMic(); });
 
   // 発振器
-  toneStartBtn.addEventListener('click', ()=>{
-    startTone();
-  });
-  toneStopBtn.addEventListener('click', ()=>{
-    stopTone();
-  });
+  toneStartBtn.addEventListener('click', ()=>{ startTone(); });
+  toneStopBtn .addEventListener('click', ()=>{ stopTone();  });
 
-  // フリーズ＆保存
-  freezeBtn.addEventListener('click', ()=>{
-    frozen = !frozen;
-    freezeBtn.textContent = frozen ? '▶ 再開' : '⏸ 停止';
-  });
+  // 画像保存（フリーズ機能は要求により未実装）
   saveBtn.addEventListener('click', ()=>{
-    // 画面のCSSサイズでPNG化
     const tmp = document.createElement('canvas');
-    tmp.width  = canvas.clientWidth;
-    tmp.height = canvas.clientHeight;
+    tmp.width = canvas.clientWidth; tmp.height = canvas.clientHeight;
     const tctx = tmp.getContext('2d');
-    // DPRを反映した現キャンバスをCSS解像度に描き戻し
     tctx.drawImage(canvas, 0,0, tmp.width, tmp.height);
     const url = tmp.toDataURL('image/png');
-    const a = document.createElement('a');
-    a.href = url;
+    const a = document.createElement('a'); a.href = url;
     const ts = new Date().toISOString().replace(/[:.]/g,'-');
-    a.download = `scope_${ts}.png`;
-    a.click();
+    a.download = `scope_${ts}.png`; a.click();
   });
 
-  // キー
-  window.addEventListener('keydown', (e)=>{
-    if (e.code === 'Space'){
-      e.preventDefault();
-      frozen = !frozen;
-      freezeBtn.textContent = frozen ? '▶ 再開' : '⏸ 停止';
-    }else if (e.key.toLowerCase() === 's'){
-      e.preventDefault();
-      saveBtn.click();
-    }
-  });
-
-  // 初期表示
-  setFrequency(440.00); // デフォルトA4
-  setVolumePct(0);      // 初期は無音
+  // 初期状態
+  setFrequency(440.00); // A4
+  setVolumePct(0);      // 無音
 })();
 </script>
 </body>
