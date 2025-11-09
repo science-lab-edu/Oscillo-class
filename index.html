@@ -38,11 +38,7 @@
   .value-badge strong{font-size:18px}
   .toggle{background:#fff;border:1px solid #d6e3ff}
   .toggle.on{background:#e0ecff}
-  .seg{display:flex;gap:6px}
-  .seg button{background:#fff;border:1px solid #d6e3ff}
-  .seg button.on{background:#e0ecff}
   canvas{width:100%;height:300px;background:#fff;border:1px solid #e6eefc;border-radius:14px;display:block}
-  .meter{min-width:160px;padding:8px 10px;border-radius:10px;background:#fff;border:1px solid #e6eefc}
   footer{padding:10px 16px;color:var(--muted);font-size:12px}
 </style>
 </head>
@@ -65,48 +61,38 @@
       </div>
     </div>
 
-    <!-- 音量（発信器 出力％） + 周波数補正 -->
+    <!-- 音量（発信器 出力％） -->
     <div class="row labeled" aria-label="音量">
       <label for="vol"><strong>音量</strong></label>
       <input id="vol" type="range" min="0" max="100" step="1" value="20" style="flex:1">
       <div class="value-badge"><strong id="volPct">20</strong>%</div>
-      <span class="tiny" id="compBadge" style="margin-left:8px;">（補正中）</span>
-      <button id="compToggle" class="toggle on" aria-pressed="true" title="周波数ごとの音量補正">補正 ON</button>
+      <span class="tiny">※発信器の出力値（補正は常時ONで内部適用）</span>
     </div>
 
-    <!-- コントロール群：画面停止/音停止/マイク停止/縦レンジ -->
+    <!-- コントロール群：画面停止/音停止/マイク停止 -->
     <div class="row" style="gap:10px">
       <button id="freezeBtn" class="toggle" aria-pressed="false">画面停止</button>
       <button id="toneStopBtn" class="toggle">音の発信停止</button>
       <button id="micToggleBtn" class="toggle" aria-pressed="true">マイク停止</button>
-      <div class="seg" role="group" aria-label="縦レンジ">
-        <button class="on" data-r="2">縦レンジ×2</button>
-        <button data-r="4">×4</button>
-        <button data-r="8">×8</button>
-      </div>
-      <span class="tiny">※縦レンジを上げるほど振幅が大きく表示</span>
+      <span class="tiny">※画面停止で音も停止します</span>
     </div>
   </div>
 
-  <!-- 表示部 -->
+  <!-- 表示部（dB表示は削除） -->
   <div class="panel" style="margin-top:12px">
     <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
       <div style="flex:1;min-width:260px">
         <canvas id="scope" width="1200" height="360" aria-label="マイク波形表示"></canvas>
       </div>
-      <div class="meter" aria-live="polite">
-        <div class="tiny">マイク音量（概算 dBFS）</div>
-        <div style="font-variant-numeric:tabular-nums;font-size:24px" id="dbVal">--.- dB</div>
-      </div>
     </div>
     <div class="tiny" style="margin-top:6px">
-      表示はマイクで拾った波形／音量（dBFS）。周波数や時間目盛りは非表示。
+      表示はマイクで拾った波形です（周波数や時間目盛りは非表示）。
     </div>
   </div>
 </div>
 
 <footer class="wrap">
-  <div>© 教材用シンプル版 — 正弦波のみ／色分けボタン／音量％／マイクdB表示／画面停止＝音も停止／縦レンジ／周波数補正</div>
+  <div>© 教材用シンプル版 — 正弦波のみ／色分けボタン／音量％／画面停止＝音も停止／縦レンジ固定×8相当／周波数補正 常時ON</div>
 </footer>
 
 <script>
@@ -116,17 +102,12 @@
   const audio = new AC({latencyHint:'interactive'});
 
   let osc = null;
-  const tonePreGain = audio.createGain(); // 周波数補正用
+  const tonePreGain = audio.createGain(); // 周波数補正用（常時ON）
   tonePreGain.gain.value = 1.0;
+
   const outGain = audio.createGain();     // ユーザー音量（％）
   outGain.gain.value = 0.20;              // 初期20%
   tonePreGain.connect(outGain).connect(audio.destination);
-
-  // 分析用
-  const anaOut = audio.createAnalyser();
-  anaOut.fftSize = 2048;
-  anaOut.smoothingTimeConstant = 0.0;
-  outGain.connect(anaOut);
 
   // ====== マイク ======
   const anaMic = audio.createAnalyser();
@@ -159,12 +140,8 @@
   }
   function stopMic(){
     try{ micStreamNode && micStreamNode.disconnect(); }catch{}
-    if(micStream){
-      micStream.getTracks().forEach(t=>t.stop());
-    }
-    micStreamNode = null;
-    micStream = null;
-    micReady = false;
+    if(micStream){ micStream.getTracks().forEach(t=>t.stop()); }
+    micStreamNode = null; micStream = null; micReady = false;
     micToggleBtn.classList.remove('on');
     micToggleBtn.setAttribute('aria-pressed','false');
     micToggleBtn.textContent = 'マイク開始';
@@ -178,20 +155,9 @@
   const freezeBtn = document.getElementById('freezeBtn');
   const toneStopBtn = document.getElementById('toneStopBtn');
   const micToggleBtn = document.getElementById('micToggleBtn');
-  const dbVal = document.getElementById('dbVal');
-  const compToggle = document.getElementById('compToggle');
-  const compBadge = document.getElementById('compBadge');
-  const rangeSeg = document.querySelector('.seg');
 
-  // 縦レンジ倍率
-  let visGain = 2; // ×2 が初期
-  rangeSeg.addEventListener('click', (e)=>{
-    const b = e.target.closest('button[data-r]');
-    if(!b) return;
-    rangeSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on');
-    visGain = Number(b.dataset.r);
-  });
+  // ====== 縦レンジ：固定（×8 相当） ======
+  const visGain = 8;
 
   function setVolumeFromSlider(){
     const pct = Number(vol.value)/100;          // 0-1
@@ -200,30 +166,18 @@
   }
   vol.addEventListener('input', setVolumeFromSlider);
 
-  // ====== 周波数補正（ユーザー提供の計測値に基づく） ======
-  // 基準レベル（平均 -34.425 dBFS 付近）に合わせる補正倍率
+  // ====== 周波数補正（常時ON） ======
+  // ユーザー計測（20%出力時）を基準化。ミは +2 dB 追加補正 → 係数 ≒ 2.59
   const compByNote = {
-    "ド": 0.756,  // -32.0 → 少し下げる
-    "レ": 0.849,  // -33.0
-    "ミ": 2.059,  // -40.7 → 大きく上げる
-    "ファ":1.544, // -38.2
-    "ソ": 1.199,  // -36.0
-    "ラ": 0.952,  // -34.0（※ご提供値の「ラ」は-34.0dBと解釈）
-    "シ": 0.714,  // -31.5
-    "ド↑":0.601   // -30.0
+    "ド": 0.756,
+    "レ": 0.849,
+    "ミ": 2.590,   // 旧:2.059 → +2 dB 相当で約×1.259 → 2.590
+    "ファ":1.544,
+    "ソ": 1.199,
+    "ラ": 0.952,
+    "シ": 0.714,
+    "ド↑":0.601
   };
-  let compOn = true;
-  compToggle.addEventListener('click', ()=>{
-    compOn = !compOn;
-    compToggle.classList.toggle('on', compOn);
-    compToggle.setAttribute('aria-pressed', String(compOn));
-    compToggle.textContent = compOn ? '補正 ON' : '補正 OFF';
-    compBadge.style.display = compOn ? '' : 'none';
-    // 補正切替時に現在音にも反映
-    applyToneComp(currentNoteName);
-  });
-
-  // ====== 発振制御 ======
   let currentNoteName = null;
 
   function startOsc(freq, noteName){
@@ -244,7 +198,7 @@
   }
   function applyToneComp(noteName){
     currentNoteName = noteName || currentNoteName;
-    const comp = (compOn && currentNoteName && compByNote[currentNoteName]) ? compByNote[currentNoteName] : 1.0;
+    const comp = (currentNoteName && compByNote[currentNoteName]) ? compByNote[currentNoteName] : 1.0;
     tonePreGain.gain.setValueAtTime(comp, audio.currentTime);
   }
 
@@ -265,12 +219,7 @@
     freezeBtn.classList.toggle('on', freeze);
     freezeBtn.setAttribute('aria-pressed', String(freeze));
     freezeBtn.textContent = freeze ? '画面停止（停止中：音も停止）' : '画面停止';
-    if(freeze){
-      stopOsc(); // 画面停止で音も止める
-    }else{
-      // 再開時は描画のみ再開（音はプリセットを押した時に再開）
-      drawOnce(true);
-    }
+    if(freeze){ stopOsc(); } else { drawOnce(true); }
   });
 
   // 個別ボタン：音の発信停止／マイク停止・開始
@@ -302,32 +251,23 @@
       ctx.fillText('マイク未許可：プリセットを押すか、マイク開始を押してください', 20, 28);
       return;
     }
-    anaMic.getByteTimeDomainData(timeMic);
+    const buf = timeMic;
+    anaMic.getByteTimeDomainData(buf);
     ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--wave');
     ctx.lineWidth = 2; ctx.beginPath();
-    const step = Math.ceil(timeMic.length / W);
+    const step = Math.ceil(buf.length / W);
     for(let x=0,i=0; x<W; x++, i+=step){
-      const v = (timeMic[i]-128)/128;              // -1..+1
-      const y = H/2 - v * (H*0.45*visGain);        // 縦レンジで拡大
-      const yy = Math.max(1, Math.min(H-1, y));    // クリップ
+      const v = (buf[i]-128)/128;                 // -1..+1
+      const y = H/2 - v * (H*0.45*visGain);       // 固定×8相当
+      const yy = Math.max(1, Math.min(H-1, y));
       if(x===0) ctx.moveTo(0,yy); else ctx.lineTo(x,yy);
     }
     ctx.stroke();
   }
 
-  function calcDbFS(){
-    const buf = new Float32Array(anaMic.fftSize);
-    if(micReady){ anaMic.getFloatTimeDomainData(buf); }
-    let sum=0; for(let i=0;i<buf.length;i++){ const v=buf[i]||0; sum += v*v; }
-    const rms = Math.sqrt(sum / buf.length) || 0;
-    let db = 20*Math.log10(rms); if(!isFinite(db)) db = -Infinity;
-    db = Math.max(db, -90);
-    dbVal.textContent = (db===-Infinity ? '--.-' : db.toFixed(1)) + ' dB';
-  }
-
   function drawOnce(force=false){
     if(freeze && !force) return;
-    drawGrid(); drawWave(); calcDbFS();
+    drawGrid(); drawWave();
   }
   (function loop(){ drawOnce(); requestAnimationFrame(loop); })();
 
