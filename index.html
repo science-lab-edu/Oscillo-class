@@ -4,307 +4,317 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>かんたんWebオシロスコープ（学校教材版）</title>
-<!-- 1ファイル完結 / HTTPS 前提（マイク権限用） -->
+
+<!-- 単一ファイルでの配布を想定。インラインを許可して簡易CSPを設定 -->
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+
 <style>
   :root{
-    --ink:#0d2b66;        /* 文字 */
-    --grid:#cfe2ff;       /* グリッド */
+    --ink:#0d2b66;        /* 文字/線 濃青 */
+    --grid:#cfe2ff;       /* グリッド 薄青 */
     --axis:#5b8bd9;       /* 軸色 */
-    --wave:#0066cc;       /* 波形 */
+    --wave:#0066cc;       /* 波形色 */
     --bg:#ffffff;         /* 背景 */
     --panel:#f5f9ff;      /* パネル */
     --muted:#5f6b7a;      /* 補助文字 */
+    --accent:#3b82f6;     /* 強調 */
   }
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;color:var(--ink);background:var(--bg)}
-  header{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--panel);border-bottom:1px solid #e6eefc}
-  h1{font-size:16px;margin:0;font-weight:700;color:var(--ink)}
-  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-  .group{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#fff;border:1px solid #e6eefc;border-radius:10px;padding:8px 10px}
-  .group label{font-size:12px;color:var(--muted);margin-right:4px}
-  button{appearance:none;border:1px solid #cfe0ff;background:#fff;border-radius:10px;padding:8px 12px;font-size:14px;cursor:pointer;min-width:44px}
-  button:hover{opacity:.95}
-  button.primary{background:#e8f1ff;border-color:#b9d1ff}
-  button.danger{background:#fff0f0;border-color:#ffc0c0}
-  .small{font-size:12px;padding:6px 10px}
-  .status{font-size:12px;color:var(--muted)}
-  main{padding:10px 14px}
-  canvas{width:100%;height:300px;display:block;background:#fff;border:1px solid #e6eefc;border-radius:12px;box-shadow:0 1px 0 rgba(13,43,102,.04) inset}
-  /* プリセット色（ド〜ド）：視覚的に音の違いを示す */
-  .note-do{background:#ffe3e3;border-color:#ffc2c2}
-  .note-re{background:#fff1cf;border-color:#ffd48a}
-  .note-mi{background:#f5ffd2;border-color:#dff28a}
-  .note-fa{background:#e0ffe8;border-color:#b7f4c4}
-  .note-so{background:#dff5ff;border-color:#bfe6ff}
-  .note-la{background:#e9e0ff;border-color:#cdbbff}
-  .note-si{background:#ffe0fa;border-color:#ffc2f0}
-  .note-do-hi{background:#e8e8e8;border-color:#d0d0d0}
-  /* スライダー */
-  .slider{appearance:none;width:180px;height:6px;border-radius:999px;background:#e6eefc;outline:none}
-  .slider::-webkit-slider-thumb{appearance:none;width:18px;height:18px;border-radius:50%;background:#5b8bd9;border:1px solid #3e6fc2}
-  .value{font-variant-numeric:tabular-nums}
+  *{box-sizing:border-box;font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans","Noto Sans JP","Yu Gothic UI","Meiryo",sans-serif}
+  body{margin:0;background:var(--bg);color:var(--ink)}
+  header{padding:10px 16px;border-bottom:1px solid #e6eefc;background:#fff;position:sticky;top:0;z-index:2}
+  header h1{margin:0;font-size:18px}
+  .wrap{max-width:1000px;margin:0 auto;padding:16px}
+  .panel{background:var(--panel);border:1px solid #e6eefc;border-radius:14px;padding:12px;box-shadow:0 1px 0 rgba(13,43,102,.04)}
+  .controls{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:820px){.controls{grid-template-columns: 1.1fr 1fr}}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .preset{display:grid;grid-template-columns:repeat(8, minmax(56px,1fr));gap:8px}
+  button{border:0;border-radius:12px;padding:10px 12px;cursor:pointer;font-weight:600}
+  button:focus{outline:2px solid #9cc4ff;outline-offset:2px}
+  .note{height:44px}
+  .note[data-n="ド"]{background:#fde68a}
+  .note[data-n="レ"]{background:#fca5a5}
+  .note[data-n="ミ"]{background:#fdba74}
+  .note[data-n="ファ"]{background:#86efac}
+  .note[data-n="ソ"]{background:#93c5fd}
+  .note[data-n="ラ"]{background:#c4b5fd}
+  .note[data-n="シ"]{background:#f0abfc}
+  .note[data-n="ド↑"]{background:#a5f3fc}
+  .tiny{font-size:12px;color:var(--muted)}
+  .labeled{display:flex;align-items:center;gap:10px}
+  .value-badge{min-width:62px;text-align:right;font-variant-numeric:tabular-nums}
+  .value-badge strong{font-size:18px}
+  .toggle{background:#fff;border:1px solid #d6e3ff}
+  .toggle.on{background:#e0ecff}
+  canvas{width:100%;height:300px;background:#fff;border:1px solid #e6eefc;border-radius:14px;display:block}
+  .meter{min-width:140px;padding:8px 10px;border-radius:10px;background:#fff;border:1px solid #e6eefc}
+  footer{padding:10px 16px;color:var(--muted);font-size:12px}
 </style>
 </head>
 <body>
   <header>
-    <h1>かんたんWebオシロスコープ</h1>
-    <div class="row">
-      <!-- マイク -->
-      <div class="group" id="micGroup">
-        <label>マイク</label>
-        <button id="micStart" class="primary">▶ 開始</button>
-        <button id="micStop"  class="danger">■ 停止</button>
-      </div>
-      
-      <!-- 発振器：再生/停止 -->
-      <div class="group" id="oscGroup">
-        <label>発振器（正弦波）</label>
-        <button id="toneStart" class="primary">▶ 発振</button>
-        <button id="toneStop"  class="danger">■ 停止</button>
-      </div>
-
-      <!-- 音量（スライダー + 数値%） -->
-      <div class="group" id="volGroup">
-        <label>音量</label>
-        <input id="volSlider" type="range" class="slider" min="0" max="100" step="1" value="0" aria-label="音量(%)">
-        <span class="value" id="volLabel">0%</span>
-      </div>
-
-      <!-- 画面停止（フリーズ）ボタン -->
-      <div class="group" id="freezeGroup">
-        <label>表示</label>
-        <button id="freezeBtn" class="small">⏸ 画面停止</button>
-      </div>
-    </div>
+    <h1>かんたんWebオシロスコープ（学校教材版）</h1>
   </header>
 
-  <!-- 周波数プリセット：アルトリコーダー（F管）ドレミファソラシド / ラベルは仮名のみ -->
-  <main>
-    <div class="group" id="presetGroup">
-      <label>プリセット（アルト：ド=F4）</label>
+  <div class="wrap">
+    <div class="controls panel">
+      <!-- プリセット音（アルトリコーダー：画面表示はドレミ、周波数は内部で設定） -->
+      <div class="row" aria-label="プリセット音">
+        <div class="preset" id="presetArea">
+          <!-- ラベルのみ。周波数は表示しない -->
+          <button class="note" data-n="ド"  data-f="349.228">ド</button>
+          <button class="note" data-n="レ"  data-f="392.000">レ</button>
+          <button class="note" data-n="ミ"  data-f="440.000">ミ</button>
+          <button class="note" data-n="ファ" data-f="466.164">ファ</button><!--（B♭相当）-->
+          <button class="note" data-n="ソ"  data-f="523.251">ソ</button>
+          <button class="note" data-n="ラ"  data-f="587.330">ラ</button>
+          <button class="note" data-n="シ"  data-f="659.255">シ</button>
+          <button class="note" data-n="ド↑" data-f="698.456">ド</button>
+        </div>
+      </div>
+
+      <!-- 音量（発信器の出力％表示） -->
+      <div class="row labeled" aria-label="音量">
+        <label for="vol"><strong>音量</strong></label>
+        <input id="vol" type="range" min="0" max="100" step="1" value="10" style="flex:1">
+        <div class="value-badge"><strong id="volPct">10</strong>%</div>
+        <span class="tiny">※発信器の出力値</span>
+      </div>
+
+      <!-- 画面停止（描画のみ停止）。音は止めない -->
       <div class="row">
-        <button class="hzBtn note-do"    data-hz="349.23">ド</button>
-        <button class="hzBtn note-re"    data-hz="392.00">レ</button>
-        <button class="hzBtn note-mi"    data-hz="440.00">ミ</button>
-        <button class="hzBtn note-fa"    data-hz="466.16">ファ</button>
-        <button class="hzBtn note-so"    data-hz="523.25">ソ</button>
-        <button class="hzBtn note-la"    data-hz="587.33">ラ</button>
-        <button class="hzBtn note-si"    data-hz="659.25">シ</button>
-        <button class="hzBtn note-do-hi" data-hz="698.46">ド</button>
+        <button id="freezeBtn" class="toggle" aria-pressed="false">画面停止</button>
+        <span class="tiny">※描画のみ停止／再開できます</span>
       </div>
     </div>
 
-    <div class="status" id="statusLine">
-      マイク音量 dBFS: —.— dB
+    <!-- 波形表示（マイク波形を中央基準で表示）。dBメータは右側/下部に表示 -->
+    <div class="panel" style="margin-top:12px">
+      <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
+        <div style="flex:1;min-width:260px">
+          <canvas id="scope" width="1200" height="360" aria-label="マイク波形表示"></canvas>
+        </div>
+        <div class="meter" aria-live="polite">
+          <div class="tiny">マイク音量（概算 dBFS）</div>
+          <div style="font-variant-numeric:tabular-nums;font-size:24px" id="dbVal">--.- dB</div>
+        </div>
+      </div>
+      <div class="tiny" style="margin-top:6px">
+        表示はマイクで拾った波形／音量（dBFS）。<br>
+        ※周波数や時間目盛りは非表示にしています。
+      </div>
     </div>
+  </div>
 
-    <canvas id="scope" width="600" height="300"></canvas>
-  </main>
+  <footer class="wrap">
+    <div>© 教材用シンプル版 — 正弦波のみ／色分けボタン／音量％／マイクdB表示／画面停止</div>
+  </footer>
 
 <script>
 (() => {
-  // ===== オーディオ基盤 =====
-  let audioCtx;
-  let osc;                 // 正弦波オシレータ
-  let outGain;             // 発振器の出力ゲイン（0..1）
-  let master;              // 将来拡張用
-  let micStream, micSrc, hpf, analyser;
+  // ========= 基本ノード =========
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const audio = new AC({latencyHint:'interactive'});
+  let osc = null;
+  const outGain = audio.createGain();
+  outGain.gain.value = 0.10; // 初期 10%
+  outGain.connect(audio.destination);
 
-  // 描画
-  const canvas = document.getElementById('scope');
-  const ctx2d  = canvas.getContext('2d');
+  // 出力側アナライザ（発信器モニタ用・描画はマイクのみだが安定化に利用可能）
+  const anaOut = audio.createAnalyser();
+  anaOut.fftSize = 2048;
+  anaOut.smoothingTimeConstant = 0.0; // 減衰見え対策：発振出力の垂れを避ける
+  outGain.connect(anaOut);
 
-  // UI
-  const micStartBtn = document.getElementById('micStart');
-  const micStopBtn  = document.getElementById('micStop');
-  const toneStartBtn= document.getElementById('toneStart');
-  const toneStopBtn = document.getElementById('toneStop');
-  const volSlider   = document.getElementById('volSlider');
-  const volLabel    = document.getElementById('volLabel');
-  const presetBtns  = [...document.querySelectorAll('.hzBtn')];
-  const freezeBtn   = document.getElementById('freezeBtn');
-  const statusLine  = document.getElementById('statusLine');
+  // ========= マイク入力 =========
+  const anaMic = audio.createAnalyser();
+  anaMic.fftSize = 2048;
+  anaMic.smoothingTimeConstant = 0.1; // 見やすさのため少しだけ平滑化
+  const timeMic = new Uint8Array(anaMic.fftSize);
 
-  // 状態
-  let currentHz = 440; // 初期 A4
-  let frozen = false;
+  let micReady = false;
+  let micStreamNode = null;
 
-  // dBFS表示（RMS平滑）
-  const smoothAlpha = 0.2; // α=0.2
-  let smoothedDb = null;
-
-  function ensureCtx(){
-    if (!audioCtx){
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    if (audioCtx.state === 'suspended'){
-      audioCtx.resume();
-    }
-    if (!outGain){
-      outGain  = audioCtx.createGain();
-      outGain.gain.value = 0.0; // 初期は無音
-      master = audioCtx.createGain();
-      master.gain.value = 1.0;
-      outGain.connect(master).connect(audioCtx.destination);
-    }
-  }
-
-  // ===== 発振器（正弦波） =====
-  function ensureOsc(){
-    ensureCtx();
-    if (!osc){
-      osc = audioCtx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(currentHz, audioCtx.currentTime);
-      osc.connect(outGain);
-      osc.start();
-    }
-  }
-  function startTone(){ ensureCtx(); ensureOsc(); }
-  function stopTone(){ if (osc){ try{ osc.disconnect(); }catch(e){} osc = null; } }
-  function setFrequency(hz){
-    currentHz = hz;
-    if (osc && audioCtx){ osc.frequency.setValueAtTime(hz, audioCtx.currentTime); }
-  }
-  function setVolumePct(pct){
-    const p = Math.max(0, Math.min(100, pct|0));
-    volSlider.value = String(p);
-    volLabel.textContent = p + '%';
-    if (outGain && audioCtx){ outGain.gain.setValueAtTime(p/100, audioCtx.currentTime); }
-  }
-
-  // ===== マイク & 解析 =====
-  async function startMic(){
-    ensureCtx();
-    if (!micStream){
-      // OS/ブラウザの自動処理を抑止（AGC/NS/EC）
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: false,
-          noiseSuppression: false,
-          autoGainControl: false
-        },
-        video: false
+  async function initMic(){
+    try{
+      // 学校PCでの自動調整による減衰や高域ロールオフを抑える
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio:{
+          echoCancellation:false,
+          noiseSuppression:false,
+          autoGainControl:false,
+          channelCount:1,
+          sampleRate: audio.sampleRate
+        }
       });
-      micSrc = audioCtx.createMediaStreamSource(micStream);
-
-      // HPF 5Hz でDC/低域ノイズ除去
-      hpf = audioCtx.createBiquadFilter();
-      hpf.type = 'highpass';
-      hpf.frequency.value = 5;
-
-      // Analyser（時間波形）
-      analyser = audioCtx.createAnalyser();
-      const targetSamples = Math.max(256, Math.round(audioCtx.sampleRate * 0.02)); // ≈20ms
-      const pow2 = (n)=>Math.pow(2, Math.round(Math.log2(n)));
-      analyser.fftSize = Math.min(32768, Math.max(512, pow2(targetSamples*2)));
-      analyser.smoothingTimeConstant = 0.0;
-
-      micSrc.connect(hpf).connect(analyser);
+      micStreamNode = audio.createMediaStreamSource(stream);
+      micStreamNode.connect(anaMic);
+      micReady = true;
+    }catch(err){
+      console.error('マイク取得に失敗:', err);
+      alert('マイクへのアクセスが許可されませんでした。ブラウザの許可設定を確認してください。');
     }
   }
-  function stopMic(){
-    if (analyser){ try{ hpf.disconnect(); }catch(e){} }
-    analyser = null; hpf = null;
-    if (micSrc){ try{ micSrc.disconnect(); }catch(e){} micSrc = null; }
-    if (micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream = null; }
-  }
 
-  function calcDbfsFromTimeData(buf){
-    let sum = 0; for (let i=0;i<buf.length;i++){ const v = buf[i]; sum += v*v; }
-    const rms = Math.sqrt(sum / buf.length) || 0;
-    const db = 20*Math.log10(rms + 1e-12); // -∞回避
-    return db;
-  }
+  // ========= UI =========
+  const vol = document.getElementById('vol');
+  const volPct = document.getElementById('volPct');
+  const scope = document.getElementById('scope');
+  const ctx = scope.getContext('2d');
+  const freezeBtn = document.getElementById('freezeBtn');
+  const dbVal = document.getElementById('dbVal');
 
-  // ===== 描画 =====
-  function resizeCanvasForDPR(){
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
-    canvas.width  = Math.round(cssW * dpr);
-    canvas.height = Math.round(cssH * dpr);
-    ctx2d.setTransform(dpr,0,0,dpr,0,0);
+  function setVolumeFromSlider(){
+    const pct = Number(vol.value)/100;      // 0.00 - 1.00
+    outGain.gain.setValueAtTime(pct, audio.currentTime); // 減衰しない定常値
+    volPct.textContent = Math.round(Number(vol.value));
   }
-  function drawGrid(){
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    ctx2d.clearRect(0,0,w,h);
-    ctx2d.fillStyle = '#fff'; ctx2d.fillRect(0,0,w,h);
-    ctx2d.strokeStyle = 'var(--grid)'; ctx2d.lineWidth = 1;
-    const divs = 10;
-    for (let i=0;i<=divs;i++){ // 縦線
-      const x = (w/divs)*i; ctx2d.beginPath(); ctx2d.moveTo(x,0); ctx2d.lineTo(x,h); ctx2d.stroke();
-    }
-    for (let j=0;j<=divs;j++){ // 横線
-      const y = (h/divs)*j; ctx2d.beginPath(); ctx2d.moveTo(0,y); ctx2d.lineTo(w,y); ctx2d.stroke();
-    }
-    // 中央線（やや上）
-    const centerY = Math.round(h*0.48);
-    ctx2d.strokeStyle = 'var(--axis)';
-    ctx2d.beginPath(); ctx2d.moveTo(0, centerY + .5); ctx2d.lineTo(w, centerY + .5); ctx2d.stroke();
-    // ※ 時間軸・周波数ラベルは表示しない
-  }
-  function drawWave(timeData){
-    const w = canvas.clientWidth, h = canvas.clientHeight;
-    const centerY = Math.round(h*0.48);
-    ctx2d.strokeStyle = 'var(--wave)'; ctx2d.lineWidth = 2; ctx2d.beginPath();
-    const len = timeData.length;
-    for (let i=0;i<len;i++){
-      const t = i/(len-1), x = t*w; const v = timeData[i];
-      const y = centerY - v * (h*0.40); // 固定スケール
-      if (i===0) ctx2d.moveTo(x,y); else ctx2d.lineTo(x,y);
-    }
-    ctx2d.stroke();
-  }
-  function render(){
-    if (frozen){ requestAnimationFrame(render); return; }
-    resizeCanvasForDPR();
-    drawGrid();
-    if (analyser){
-      const N = analyser.fftSize;               // ← 解析バッファ長を厳密に使用
-      const buf = new Float32Array(N);
-      analyser.getFloatTimeDomainData(buf);
-      const instDb = calcDbfsFromTimeData(buf);
-      smoothedDb = (smoothedDb==null)? instDb : smoothAlpha*instDb + (1-smoothAlpha)*smoothedDb;
-      statusLine.textContent = `マイク音量 dBFS: ${smoothedDb.toFixed(1)} dB`;
-      drawWave(buf);
-    }
-    requestAnimationFrame(render);
-  }
-  requestAnimationFrame(render);
+  vol.addEventListener('input', setVolumeFromSlider);
 
-  // ===== イベント束ね =====
-  presetBtns.forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const hz = Number(btn.dataset.hz);
-      if (!isNaN(hz)) setFrequency(hz);
-    });
-  });
-  volSlider.addEventListener('input', ()=>{
-    const p = Number(volSlider.value)||0; volLabel.textContent = p + '%';
-    if (outGain && audioCtx){ outGain.gain.setValueAtTime(p/100, audioCtx.currentTime); }
+  // プリセット：ボタン押下で周波数切り替え、押すたびに再発音
+  document.getElementById('presetArea').addEventListener('click', async (e)=>{
+    const btn = e.target.closest('.note');
+    if(!btn) return;
+
+    // Autoplay対策：ユーザー操作時に必ずresume
+    if(audio.state !== 'running'){
+      try{ await audio.resume(); }catch{}
+
+    }
+    if(!micReady) await initMic();
+
+    const f = Number(btn.dataset.f);
+    startOsc(f);
   });
 
-  // マイク
-  micStartBtn.addEventListener('click', async ()=>{
-    try{ await startMic(); }
-    catch(err){ alert('マイク開始に失敗しました。権限とHTTPSを確認してください。'); console.error(err); }
-  });
-  micStopBtn.addEventListener('click', ()=>{ stopMic(); });
+  function startOsc(freq){
+    stopOsc(); // 一旦止めて作り直す（クリックで確実に鳴るように）
+    osc = audio.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, audio.currentTime);
+    osc.connect(outGain);
+    osc.start();
+  }
+  function stopOsc(){
+    if(osc){
+      try{ osc.stop(); }catch{}
+      try{ osc.disconnect(); }catch{}
+      osc = null;
+    }
+  }
 
-  // 発振器
-  toneStartBtn.addEventListener('click', ()=>{ startTone(); });
-  toneStopBtn .addEventListener('click', ()=>{ stopTone();  });
-
-  // 画面停止（フリーズ）
+  // ========= 画面停止 =========
+  let freeze = false;
   freezeBtn.addEventListener('click', ()=>{
-    frozen = !frozen;
-    freezeBtn.textContent = frozen ? '▶ 再開' : '⏸ 画面停止';
+    freeze = !freeze;
+    freezeBtn.classList.toggle('on', freeze);
+    freezeBtn.setAttribute('aria-pressed', String(freeze));
+    freezeBtn.textContent = freeze ? '画面停止（停止中）' : '画面停止';
+    // 停止→再開時に描画を即リフレッシュ
+    if(!freeze) drawOnce(true);
   });
 
-  // 初期状態
-  setFrequency(440.00); // A4
-  setVolumePct(0);      // 無音
+  // ========= 描画 =========
+  function drawGrid(){
+    const W = scope.width, H = scope.height;
+    ctx.clearRect(0,0,W,H);
+
+    // 背景
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0,0,W,H);
+
+    // グリッド
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grid');
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const gy = 6, gx = 12;
+    for(let i=1;i<gy;i++){
+      const y = Math.round(H*i/gy)+0.5;
+      ctx.moveTo(0,y); ctx.lineTo(W,y);
+    }
+    for(let i=1;i<gx;i++){
+      const x = Math.round(W*i/gx)+0.5;
+      ctx.moveTo(x,0); ctx.lineTo(x,H);
+    }
+    ctx.stroke();
+
+    // 中央基準線（上下対称の真ん中に表示）
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--axis');
+    ctx.beginPath();
+    ctx.moveTo(0, H/2 + 0.5);
+    ctx.lineTo(W, H/2 + 0.5);
+    ctx.stroke();
+  }
+
+  function drawWave(){
+    const W = scope.width, H = scope.height;
+    // マイクが未準備なら簡易表示
+    if(!micReady){
+      ctx.fillStyle = '#999';
+      ctx.fillText('マイク未許可：プリセットボタンを押すか、マイクを許可してください', 20, 28);
+      return;
+    }
+
+    anaMic.getByteTimeDomainData(timeMic);
+
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--wave');
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    // キャンバス幅に合わせてサンプリング点を間引き
+    const step = Math.ceil(timeMic.length / W);
+    for(let x=0, i=0; x<W; x++, i+=step){
+      const v = (timeMic[i] - 128) / 128;      // -1..+1
+      const y = H/2 - v * (H*0.45);           // 上下10%を余白
+      if(x===0) ctx.moveTo(0,y);
+      else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  function calcDbFS(){
+    // dBFS表示（マイク）: RMS→dBFS
+    const buf = new Float32Array(anaMic.fftSize);
+    anaMic.getFloatTimeDomainData(buf);
+    let sum=0;
+    for(let i=0;i<buf.length;i++){
+      const v = buf[i];
+      sum += v*v;
+    }
+    const rms = Math.sqrt(sum / buf.length) || 0;
+    // 0 dBFS を1.0に相当とし、最小値を-90 dBで頭打ち
+    let db = 20 * Math.log10(rms);
+    if(!isFinite(db)) db = -Infinity;
+    db = Math.max(db, -90);
+    dbVal.textContent = (db===-Infinity ? '--.-' : db.toFixed(1)) + ' dB';
+  }
+
+  function drawOnce(force=false){
+    if(freeze && !force) return;
+    drawGrid();
+    drawWave();
+    calcDbFS();
+  }
+
+  function loop(){
+    drawOnce();
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+  // ========= 起動時の初期化 =========
+  setVolumeFromSlider();
+  // クリック等があるまでAudioContextはsuspendedのことがある。必要時にresumeする。
+
+  // ページ離脱時に停止（授業で開きっぱなしの誤動作防止）
+  window.addEventListener('visibilitychange', ()=>{
+    if(document.hidden){
+      // 音は鳴らし続けたい場合は停止しない。ここでは停止しない仕様にする。
+      // stopOsc();
+    }
+  });
+
 })();
 </script>
 </body>
