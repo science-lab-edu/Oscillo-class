@@ -39,6 +39,7 @@
   .toggle{background:#fff;border:1px solid #d6e3ff}
   .toggle.on{background:#e0ecff}
   canvas{width:100%;height:300px;background:#fff;border:1px solid #e6eefc;border-radius:14px;display:block}
+  .meter{min-width:160px;padding:8px 10px;border-radius:10px;background:#fff;border:1px solid #e6eefc}
   footer{padding:10px 16px;color:var(--muted);font-size:12px}
 </style>
 </head>
@@ -66,7 +67,7 @@
       <label for="vol"><strong>音量</strong></label>
       <input id="vol" type="range" min="0" max="100" step="1" value="20" style="flex:1">
       <div class="value-badge"><strong id="volPct">20</strong>%</div>
-      <span class="tiny">※発信器の出力値（補正は常時ONで内部適用）</span>
+      <span class="tiny">※発信器の出力値</span>
     </div>
 
     <!-- コントロール群：画面停止/音停止/マイク停止 -->
@@ -78,21 +79,26 @@
     </div>
   </div>
 
-  <!-- 表示部（dB表示は削除） -->
+  <!-- 表示部（dB表示 復活） -->
   <div class="panel" style="margin-top:12px">
     <div class="row" style="justify-content:space-between;align-items:flex-start;gap:12px">
       <div style="flex:1;min-width:260px">
         <canvas id="scope" width="1200" height="360" aria-label="マイク波形表示"></canvas>
       </div>
+      <!-- ★追加：dB表示 -->
+      <div class="meter" aria-live="polite">
+        <div class="tiny">マイク音量（概算 dBFS）</div>
+        <div style="font-variant-numeric:tabular-nums;font-size:24px" id="dbVal">--.- dB</div>
+      </div>
     </div>
     <div class="tiny" style="margin-top:6px">
-      表示はマイクで拾った波形です（周波数や時間目盛りは非表示）。
+      表示はマイクで拾った波形／音量（dBFS）。周波数や時間目盛りは非表示。
     </div>
   </div>
 </div>
 
 <footer class="wrap">
-  <div>© 教材用シンプル版 — 正弦波のみ／色分けボタン／音量％／画面停止＝音も停止／縦レンジ固定×8相当／周波数補正 常時ON</div>
+  <div>© 教材用シンプル版 — 正弦波のみ／色分けボタン／音量％／画面停止＝音も停止／縦レンジ固定×8相当</div>
 </footer>
 
 <script>
@@ -102,7 +108,7 @@
   const audio = new AC({latencyHint:'interactive'});
 
   let osc = null;
-  const tonePreGain = audio.createGain(); // 周波数補正用（常時ON）
+  const tonePreGain = audio.createGain(); // （補正用だが今回は常に1.0）
   tonePreGain.gain.value = 1.0;
 
   const outGain = audio.createGain();     // ユーザー音量（％）
@@ -155,6 +161,7 @@
   const freezeBtn = document.getElementById('freezeBtn');
   const toneStopBtn = document.getElementById('toneStopBtn');
   const micToggleBtn = document.getElementById('micToggleBtn');
+  const dbVal = document.getElementById('dbVal'); // ★追加
 
   // ====== 縦レンジ：固定（×8 相当） ======
   const visGain = 8;
@@ -166,19 +173,12 @@
   }
   vol.addEventListener('input', setVolumeFromSlider);
 
-  // ====== 周波数補正（常時ON） ======
-  // ユーザー計測（20%出力時）を基準化。ミは +2 dB 追加補正 → 係数 ≒ 2.59
-  const compByNote = {
-    "ド": 0.756,
-    "レ": 0.849,
-    "ミ": 2.590,   // 旧:2.059 → +2 dB 相当で約×1.259 → 2.590
-    "ファ":1.544,
-    "ソ": 1.199,
-    "ラ": 0.952,
-    "シ": 0.714,
-    "ド↑":0.601
-  };
+  // ====== 補正は常にオフ（1.0倍） ======
   let currentNoteName = null;
+  function applyToneComp(noteName){
+    currentNoteName = noteName || currentNoteName;
+    tonePreGain.gain.setValueAtTime(1.0, audio.currentTime); // 補正オフ
+  }
 
   function startOsc(freq, noteName){
     stopOsc();
@@ -196,11 +196,6 @@
       osc = null;
     }
   }
-  function applyToneComp(noteName){
-  currentNoteName = noteName || currentNoteName;
-  // 補正オフ：常に1倍
-  tonePreGain.gain.setValueAtTime(1.0, audio.currentTime);
-}
 
   // プリセット押下で再生＆マイク起動
   document.getElementById('presetArea').addEventListener('click', async (e)=>{
@@ -265,9 +260,26 @@
     ctx.stroke();
   }
 
+  // ★追加：dBFS 計算と表示（RMS→dBFS）
+  let dbSmooth = null; // 簡易EMAで読み取りを安定化
+  function calcDbFS(){
+    if(!micReady){ dbVal.textContent='--.- dB'; return; }
+    const buf = new Float32Array(anaMic.fftSize);
+    anaMic.getFloatTimeDomainData(buf);
+    let sum=0;
+    for(let i=0;i<buf.length;i++){ const v=buf[i]; sum += v*v; }
+    const rms = Math.sqrt(sum / buf.length) || 0;
+    let db = 20 * Math.log10(rms);
+    if(!isFinite(db)) db = -90;
+    db = Math.max(db, -90); // 表示下限
+    // 簡易スムージング（α=0.2）
+    dbSmooth = (dbSmooth==null) ? db : (dbSmooth*0.8 + db*0.2);
+    dbVal.textContent = dbSmooth.toFixed(1) + ' dB';
+  }
+
   function drawOnce(force=false){
     if(freeze && !force) return;
-    drawGrid(); drawWave();
+    drawGrid(); drawWave(); calcDbFS(); // ★dB更新
   }
   (function loop(){ drawOnce(); requestAnimationFrame(loop); })();
 
@@ -277,4 +289,3 @@
 </script>
 </body>
 </html>
-
