@@ -197,10 +197,10 @@
     }
   }
   function applyToneComp(noteName){
-    currentNoteName = noteName || currentNoteName;
-    const comp = (currentNoteName && compByNote[currentNoteName]) ? compByNote[currentNoteName] : 1.0;
-    tonePreGain.gain.setValueAtTime(comp, audio.currentTime);
-  }
+  currentNoteName = noteName || currentNoteName;
+  // 補正オフ：常に1倍
+  tonePreGain.gain.setValueAtTime(1.0, audio.currentTime);
+}
 
   // プリセット押下で再生＆マイク起動
   document.getElementById('presetArea').addEventListener('click', async (e)=>{
@@ -277,3 +277,4 @@
 </script>
 </body>
 </html>
+
