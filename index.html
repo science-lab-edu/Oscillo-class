@@ -67,10 +67,11 @@
     gap:6px;
   }
   .scopeDb{
-    font-size:12px;
-    color:var(--muted);
+    font-size:20px;           /* ★デシベル表示を大きく */
+    font-weight:700;          /* ★太字で強調 */
+    color:var(--ink);         /* ★濃い色で目立たせる */
     font-variant-numeric:tabular-nums;
-    min-width:60px;
+    min-width:72px;
     text-align:right;
   }
   canvas.scopeCanvas{
@@ -252,9 +253,7 @@
   }
   vol.addEventListener('input', setVolumeFromSlider);
 
-  // ====== 周波数補正（常時ON：前回の係数を引き継ぎ） ======
-  // 測定: ド -35.5, レ -34, ミ -36, ファ -32, ソ -27, ラ -30, シ -27, ド↑ -24.5
-  // 目標 ≒ -30.75 dB として係数計算済み
+  // ====== 周波数補正（常時ON） ======
   const compByNote = {
     "ド": 1.728,
     "レ": 1.454,
@@ -326,7 +325,6 @@
       holdFlags[idx] = !holdFlags[idx];
       btn.classList.toggle('on', holdFlags[idx]);
       btn.textContent = holdFlags[idx] ? '固定中' : '波形固定';
-      // 固定オンにした瞬間の dB 値をそのまま残す
       if(holdFlags[idx] && latestDbPos != null){
         heldDb[idx] = latestDbPos;
         dbSpans[idx].textContent = heldDb[idx].toFixed(1) + ' dB';
@@ -355,17 +353,16 @@
     ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--wave');
     ctx.lineWidth = 2; ctx.beginPath();
     for(let x=0,i=0; x<W; x++, i+=step){
-      const v = (buf[i]-128)/128;                 // -1..+1
-      const y = H/2 - v * (H*0.45*visGain);       // 固定×8相当
+      const v = (buf[i]-128)/128;
+      const y = H/2 - v * (H*0.45*visGain);
       const yy = Math.max(1, Math.min(H-1, y));
       if(x===0) ctx.moveTo(0,yy); else ctx.lineTo(x,yy);
     }
     ctx.stroke();
   }
 
-  // dBFS 計算と表示（RMS→dBFS → 正の数に）
   let dbSmooth = null;
-  let latestDbPos = null; // 直近の正のdB値（固定用）
+  let latestDbPos = null;
 
   function calcDbFSAndUpdateLabels(){
     if(!micReady){
@@ -378,14 +375,12 @@
     anaMic.getFloatTimeDomainData(fbuf);
     let sum=0; for(let i=0;i<fbuf.length;i++){ const v=fbuf[i]; sum += v*v; }
     const rms = Math.sqrt(sum / fbuf.length) || 0;
-    let db = 20 * Math.log10(rms); // 通常は負の値（0dBFSが最大）
+    let db = 20 * Math.log10(rms);
     if(!isFinite(db)) db = -90;
     db = Math.max(db, -90);
-    // スムージング
     dbSmooth = (dbSmooth==null) ? db : (dbSmooth*0.8 + db*0.2);
-    // 生徒に分かりやすいように正の数で表示（例：-30dB → 30.0dB）
-    latestDbPos = Math.max(0, -dbSmooth);
-    // 各スコープに表示（固定中のものは heldDb を維持）
+    latestDbPos = Math.max(0, -dbSmooth);  // ★負値を正の「大きさ」に
+
     dbSpans.forEach((span, idx)=>{
       if(holdFlags[idx]){
         if(heldDb[idx] != null){
@@ -415,7 +410,6 @@
         ctx.fillText('マイク未許可：プリセットを押すか、マイク開始を押してください', 10, 20);
         return;
       }
-      // 固定中は波形を更新しない
       if(holdFlags[idx]) return;
       drawGrid(ctx,W,H);
       drawWaveOn(ctx, canvas);
@@ -426,7 +420,7 @@
   (function loop(){ drawOnce(); requestAnimationFrame(loop); })();
 
   // ====== 初期化 ======
-  setVolumeFromSlider(); // 音量％
+  setVolumeFromSlider();
 })();
 </script>
 </body>
