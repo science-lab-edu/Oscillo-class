@@ -379,7 +379,9 @@
     if(!isFinite(db)) db = -90;
     db = Math.max(db, -90);
     dbSmooth = (dbSmooth==null) ? db : (dbSmooth*0.8 + db*0.2);
-    latestDbPos = Math.max(0, -dbSmooth);  // ★負値を正の「大きさ」に
+    // -90dB ～ 0dB を 0 ～ 90 に変換（大きいほど大きな音）
+　　latestDbPos = Math.max(0, 90 + dbSmooth);
+
 
     dbSpans.forEach((span, idx)=>{
       if(holdFlags[idx]){
@@ -425,3 +427,4 @@
 </script>
 </body>
 </html>
+
